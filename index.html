@@ -203,4 +203,113 @@
                 ctx.save();
                 ctx.translate(radius, radius);
                 ctx.rotate(startAngle + anglePerSegment / 2);
-                ctx.textAlign
+                ctx.textAlign = "right";
+                ctx.fillStyle = "#333";
+                ctx.font = "bold 14px 'Malgun Gothic'";
+                ctx.fillText(item, radius - 20, 5);
+                ctx.restore();
+            });
+        }
+
+        // 2. 원반 돌리기 액션
+        function spinRoulette() {
+            if (isSpinning || items.length === 0) return;
+            isSpinning = true;
+            document.getElementById('spinBtn').disabled = true;
+
+            const numSegments = items.length;
+            
+            // 1명이 남았을 때는 돌릴 필요 없이 바로 마지막 순위 확정
+            if (numSegments === 1) {
+                finalizeLastItem();
+                return;
+            }
+
+            // 무작위 회전 각도 계산 (최소 4바퀴 이상 돌게 설정)
+            const randomSpin = Math.floor(Math.random() * 360) + 1440; 
+            currentRotation += randomSpin;
+            
+            // CSS 변형을 통해 부드럽게 회전 연출
+            canvas.style.transform = `rotate(${-currentRotation}deg)`;
+
+            // 애니메이션이 끝나는 시점(4초 후)에 결과 계산
+            setTimeout(() => {
+                // 현재 멈춘 정면 각도 계산 (12시 방향 빨간 화살표 기준)
+                const actualDegrees = currentRotation % 360;
+                const anglePerSegment = 360 / numSegments;
+                
+                // 화살표가 가리키는 인덱스 계산
+                const winningIndex = Math.floor(actualDegrees / anglePerSegment);
+                const winner = items[winningIndex];
+
+                // 순위 기록 및 원반에서 제거
+                ranking.push(winner);
+                items.splice(winningIndex, 1);
+
+                // UI 업데이트
+                renderRanking();
+                updateStatus();
+
+                isSpinning = false;
+                
+                // 만약 항목이 1개 남았다면 자동으로 마지막 순위가 되므로 바로 마감 처리 유도
+                if (items.length === 1) {
+                    document.getElementById('spinBtn').innerText = "마지막 순위 확정하기";
+                    document.getElementById('spinBtn').disabled = false;
+                } else if (items.length > 1) {
+                    document.getElementById('spinBtn').disabled = false;
+                } else {
+                    document.getElementById('spinBtn').innerText = "종료되었습니다";
+                }
+
+                // 남은 항목들로 원반 각도 초기화 상태로 새로 그림
+                // (각도가 리셋되는 자연스러운 처리를 위해 잠깐 회전 효과 끄고 리셋)
+                canvas.style.transition = 'none';
+                currentRotation = 0;
+                canvas.style.transform = `rotate(0deg)`;
+                
+                // 브라우저 렌더링 갱신 후 다시 그리기
+                setTimeout(() => {
+                    canvas.style.transition = 'transform 4s cubic-bezier(0.25, 0.1, 0.1, 1)';
+                    drawRoulette();
+                }, 50);
+
+            }, 4000);
+        }
+
+        // 마지막 1개 남은 아이템 자동 확정 처리
+        function finalizeLastItem() {
+            ranking.push(items[0]);
+            items = [];
+            renderRanking();
+            updateStatus();
+            drawRoulette();
+            isSpinning = false;
+            document.getElementById('spinBtn').innerText = "정리 완료!";
+            document.getElementById('spinBtn').disabled = true;
+        }
+
+        // 현재 남은 룰렛 상태 텍스트 노출
+        function updateStatus() {
+            const statusText = document.getElementById('statusText');
+            if (items.length > 0) {
+                statusText.innerHTML = `현재 원반에 남은 항목: <span style="color:#e74a3b;">${items.length}개</span><br>다음은 <span style="color:#4e73df;">${ranking.length + 1}위</span>를 뽑을 차례입니다.`;
+            } else {
+                statusText.innerHTML = "🎉 모든 우선순위가 결정되었습니다!";
+            }
+        }
+
+        // 우측 순위판 갱신
+        function renderRanking() {
+            const rankingDisplay = document.getElementById('rankingDisplay');
+            rankingDisplay.innerHTML = "";
+            ranking.forEach((item, index) => {
+                const li = document.createElement('li');
+                li.className = "ranking-item";
+                li.innerHTML = `<span class="rank-num">${index + 1}위</span> <span>${item}</span>`;
+                rankingDisplay.appendChild(li);
+            });
+        }
+    </script>
+</body>
+</html>
