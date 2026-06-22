@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>원반 돌리기 우선순위 게임</title>
+    <style>
+        body {
+            font-family: 'Malgun Gothic', sans-serif;
+            background-color: #f5f7fa;
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        h1 {
+            color: #333;
+            margin-bottom: 20px;
+        }
+        .container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 30px;
+            justify-content: center;
+            max-width: 1000px;
+            width: 100%;
+        }
+        /* 입력 및 결과 창 스타일 */
+        .panel {
+            background: white;
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            min-width: 280px;
+            flex: 1;
+        }
+        textarea {
+            width: 100%;
+            height: 120px;
+            box-sizing: border-box;
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 6px;
+            resize: vertical;
+            margin-bottom: 10px;
+        }
+        button {
+            width: 100%;
+            padding: 12px;
+            border: none;
+            border-radius: 6px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: background 0.2s;
+            margin-bottom: 10px;
+        }
+        .btn-primary { background-color: #4e73df; color: white; }
+        .btn-primary:hover { background-color: #2e59d9; }
+        .btn-success { background-color: #1cc88a; color: white; }
+        .btn-success:hover { background-color: #17a673; }
+        .btn-success:disabled { background-color: #cccccc; cursor: not-allowed; }
+        
+        /* 룰렛 비주얼 스타일 */
+        .roulette-area {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            position: relative;
+            flex: 1.5;
+        }
+        .pointer {
+            width: 0;
+            height: 0;
+            border-left: 15px solid transparent;
+            border-right: 15px solid transparent;
+            border-top: 25px solid #e74a3b;
+            position: absolute;
+            top: -10px;
+            z-index: 10;
+        }
+        .canvas-container {
+            position: relative;
+            width: 350px;
+            height: 350px;
+        }
+        canvas {
+            border-radius: 50%;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.15);
+            transition: transform 4s cubic-bezier(0.25, 0.1, 0.1, 1);
+        }
+        
+        /* 순위 리스트 스타일 */
+        .ranking-list {
+            list-style: none;
+            padding: 0;
+        }
+        .ranking-item {
+            padding: 10px;
+            border-bottom: 1px solid #eee;
+            font-size: 16px;
+            display: flex;
+            justify-content: space-between;
+        }
+        .rank-num {
+            font-weight: bold;
+            color: #4e73df;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>🎯 원반 돌리기 우선순위 결정기</h1>
+
+    <div class="container">
+        <div class="panel">
+            <h3>1. 데이터 입력 (5개~10개)</h3>
+            <textarea id="inputData" placeholder="한 줄에 하나씩 항목을 입력하세요.&#10;예시:&#10;오징어덮밥&#10;돈까스&#10;코다리&#10;부대찌개&#10;갈비탕&#10;쭈꾸미"></textarea>
+            <button class="btn-primary" onclick="initRoulette()">원반 생성/초기화</button>
+            
+            <div style="margin-top: 20px;">
+                <p id="statusText" style="font-weight: bold; color: #555;"></p>
+            </div>
+        </div>
+
+        <div class="roulette-area">
+            <div class="pointer"></div>
+            <div class="canvas-container">
+                <canvas id="rouletteCanvas" width="350" height="350"></canvas>
+            </div>
+            <button id="spinBtn" class="btn-success" onclick="spinRoulette()" style="margin-top: 20px; width: 200px;" disabled>돌리기 (Spin)</button>
+        </div>
+
+        <div class="panel">
+            <h3>📋 결정된 우선순위</h3>
+            <ul id="rankingDisplay" class="ranking-list">
+                </ul>
+        </div>
+    </div>
+
+    <script>
+        let items = [];
+        let ranking = [];
+        let currentRotation = 0;
+        let isSpinning = false;
+        
+        const canvas = document.getElementById('rouletteCanvas');
+        const ctx = canvas.getContext('2d');
+        const colors = ["#ff9ff3", "#feca57", "#ff6b6b", "#48dbfb", "#1dd1a1", "#a29bfe", "#ffeaa7", "#fab1a0", "#74b9ff", "#55efc4"];
+
+        // 1. 원반 초기화 및 그리기
+        function initRoulette() {
+            if (isSpinning) return;
+            
+            const text = document.getElementById('inputData').value.trim();
+            if (!text) {
+                alert("데이터를 입력해주세요.");
+                return;
+            }
+            
+            items = text.split('\n').map(item => item.trim()).filter(item => item !== "");
+            
+            if (items.length < 2) {
+                alert("최소 2개 이상의 항목을 입력해주세요.");
+                return;
+            }
+
+            ranking = []; // 순위 초기화
+            document.getElementById('rankingDisplay').innerHTML = "";
+            document.getElementById('spinBtn').disabled = false;
+            currentRotation = 0;
+            canvas.style.transform = `rotate(0deg)`;
+            
+            updateStatus();
+            drawRoulette();
+        }
+
+        // 원반 그래픽 그리기
+        function drawRoulette() {
+            const numSegments = items.length;
+            const anglePerSegment = (2 * Math.PI) / numSegments;
+            const radius = canvas.width / 2;
+
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            if (numSegments === 0) return;
+
+            items.forEach((item, index) => {
+                const startAngle = index * anglePerSegment - Math.PI / 2; // 12시 방향 시작 조정
+                const endAngle = startAngle + anglePerSegment;
+
+                // 조각 그리기
+                ctx.beginPath();
+                ctx.moveTo(radius, radius);
+                ctx.arc(radius, radius, radius, startAngle, endAngle);
+                ctx.closePath();
+                ctx.fillStyle = colors[index % colors.length];
+                ctx.fill();
+                ctx.stroke();
+
+                // 텍스트 그리기
+                ctx.save();
+                ctx.translate(radius, radius);
+                ctx.rotate(startAngle + anglePerSegment / 2);
+                ctx.textAlign
