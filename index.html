@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>원반 돌리기 우선순위 게임</title>
+    <title>자동 원반 돌리기 우선순위 결정기</title>
     <style>
         body {
             font-family: 'Malgun Gothic', sans-serif;
@@ -26,7 +26,6 @@
             max-width: 1000px;
             width: 100%;
         }
-        /* 입력 및 결과 창 스타일 */
         .panel {
             background: white;
             padding: 20px;
@@ -62,7 +61,6 @@
         .btn-success:hover { background-color: #17a673; }
         .btn-success:disabled { background-color: #cccccc; cursor: not-allowed; }
         
-        /* 룰렛 비주얼 스타일 */
         .roulette-area {
             display: flex;
             flex-direction: column;
@@ -88,10 +86,9 @@
         canvas {
             border-radius: 50%;
             box-shadow: 0 4px 10px rgba(0,0,0,0.15);
-            transition: transform 4s cubic-bezier(0.25, 0.1, 0.1, 1);
+            transition: transform 1.5s cubic-bezier(0.25, 0.1, 0.25, 1); /* 연속 회전을 위해 돌리는 시간 1.5초로 단축 */
         }
         
-        /* 순위 리스트 스타일 */
         .ranking-list {
             list-style: none;
             padding: 0;
@@ -102,25 +99,30 @@
             font-size: 16px;
             display: flex;
             justify-content: space-between;
+            animation: fadeIn 0.5s ease-in-out;
         }
         .rank-num {
             font-weight: bold;
             color: #4e73df;
         }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(-10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
     </style>
 </head>
 <body>
 
-    <h1>🎯 원반 돌리기 우선순위 결정기</h1>
+    <h1>🎯 자동 연속 원반 돌리기</h1>
 
     <div class="container">
         <div class="panel">
-            <h3>1. 데이터 입력 (5개~10개)</h3>
-            <textarea id="inputData" placeholder="한 줄에 하나씩 항목을 입력하세요.&#10;예시:&#10;오징어덮밥&#10;돈까스&#10;코다리&#10;부대찌개&#10;갈비탕&#10;쭈꾸미"></textarea>
-            <button class="btn-primary" onclick="initRoulette()">원반 생성/초기화</button>
+            <h3>1. 데이터 입력</h3>
+            <textarea id="inputData" placeholder="한 줄에 하나씩 항목을 입력하세요.&#10;예시:&#10;오징어덮밥&#10;돈까스&#10;코다리&#10;부대찌개&#10;갈비탕"></textarea>
+            <button id="initBtn" class="btn-primary" onclick="initRoulette()">원반 생성/초기화</button>
             
             <div style="margin-top: 20px;">
-                <p id="statusText" style="font-weight: bold; color: #555;"></p>
+                <p id="statusText" style="font-weight: bold; color: #555; line-height: 1.6;"></p>
             </div>
         </div>
 
@@ -129,11 +131,11 @@
             <div class="canvas-container">
                 <canvas id="rouletteCanvas" width="350" height="350"></canvas>
             </div>
-            <button id="spinBtn" class="btn-success" onclick="spinRoulette()" style="margin-top: 20px; width: 200px;" disabled>돌리기 (Spin)</button>
+            <button id="spinBtn" class="btn-success" onclick="startAutoSpin()" style="margin-top: 20px; width: 220px;" disabled>자동 전체 돌리기 시작</button>
         </div>
 
         <div class="panel">
-            <h3>📋 결정된 우선순위</h3>
+            <h3>📋 결정된 우선순위 순서</h3>
             <ul id="rankingDisplay" class="ranking-list">
                 </ul>
         </div>
@@ -143,15 +145,14 @@
         let items = [];
         let ranking = [];
         let currentRotation = 0;
-        let isSpinning = false;
+        let isRunning = false;
         
         const canvas = document.getElementById('rouletteCanvas');
         const ctx = canvas.getContext('2d');
         const colors = ["#ff9ff3", "#feca57", "#ff6b6b", "#48dbfb", "#1dd1a1", "#a29bfe", "#ffeaa7", "#fab1a0", "#74b9ff", "#55efc4"];
 
-        // 1. 원반 초기화 및 그리기
         function initRoulette() {
-            if (isSpinning) return;
+            if (isRunning) return;
             
             const text = document.getElementById('inputData').value.trim();
             if (!text) {
@@ -166,17 +167,18 @@
                 return;
             }
 
-            ranking = []; // 순위 초기화
+            ranking = []; 
             document.getElementById('rankingDisplay').innerHTML = "";
             document.getElementById('spinBtn').disabled = false;
+            document.getElementById('spinBtn').innerText = "자동 전체 돌리기 시작";
             currentRotation = 0;
+            canvas.style.transition = 'none';
             canvas.style.transform = `rotate(0deg)`;
             
             updateStatus();
             drawRoulette();
         }
 
-        // 원반 그래픽 그리기
         function drawRoulette() {
             const numSegments = items.length;
             const anglePerSegment = (2 * Math.PI) / numSegments;
@@ -187,10 +189,9 @@
             if (numSegments === 0) return;
 
             items.forEach((item, index) => {
-                const startAngle = index * anglePerSegment - Math.PI / 2; // 12시 방향 시작 조정
+                const startAngle = index * anglePerSegment - Math.PI / 2; 
                 const endAngle = startAngle + anglePerSegment;
 
-                // 조각 그리기
                 ctx.beginPath();
                 ctx.moveTo(radius, radius);
                 ctx.arc(radius, radius, radius, startAngle, endAngle);
@@ -199,7 +200,6 @@
                 ctx.fill();
                 ctx.stroke();
 
-                // 텍스트 그리기
                 ctx.save();
                 ctx.translate(radius, radius);
                 ctx.rotate(startAngle + anglePerSegment / 2);
@@ -211,95 +211,91 @@
             });
         }
 
-        // 2. 원반 돌리기 액션
-        function spinRoulette() {
-            if (isSpinning || items.length === 0) return;
-            isSpinning = true;
+        // 마스터 제어 함수: 자동 뺑뺑이 루프 시작
+        function startAutoSpin() {
+            if (isRunning || items.length === 0) return;
+            isRunning = true;
             document.getElementById('spinBtn').disabled = true;
+            document.getElementById('initBtn').disabled = true;
+            document.getElementById('spinBtn').innerText = "자동 순위 결정 중...";
 
+            runNextTurn();
+        }
+
+        // 재귀적으로 한 턴씩 돌리는 핵심 로직
+        function runNextTurn() {
             const numSegments = items.length;
-            
-            // 1명이 남았을 때는 돌릴 필요 없이 바로 마지막 순위 확정
+
+            // 1개만 남았을 때는 돌리지 않고 바로 마지막 순위 꽂고 끝내기
             if (numSegments === 1) {
                 finalizeLastItem();
                 return;
             }
 
-            // 무작위 회전 각도 계산 (최소 4바퀴 이상 돌게 설정)
-            const randomSpin = Math.floor(Math.random() * 360) + 1440; 
-            currentRotation += randomSpin;
+            // 회전 애니메이션 복구
+            canvas.style.transition = 'transform 1.5s cubic-bezier(0.25, 0.1, 0.25, 1)';
             
-            // CSS 변형을 통해 부드럽게 회전 연출
+            // 한 번 돌 때 시원하게 돌도록 각도 무작위 추가
+            const randomSpin = Math.floor(Math.random() * 360) + 720; 
+            currentRotation += randomSpin;
             canvas.style.transform = `rotate(${-currentRotation}deg)`;
 
-            // 애니메이션이 끝나는 시점(4초 후)에 결과 계산
+            // 1.5초 돌고 멈춘 직후 결과 처리
             setTimeout(() => {
-                // 현재 멈춘 정면 각도 계산 (12시 방향 빨간 화살표 기준)
                 const actualDegrees = currentRotation % 360;
                 const anglePerSegment = 360 / numSegments;
                 
-                // 화살표가 가리키는 인덱스 계산
                 const winningIndex = Math.floor(actualDegrees / anglePerSegment);
                 const winner = items[winningIndex];
 
-                // 순위 기록 및 원반에서 제거
+                // 순위판에 넣고 원반에서 제거
                 ranking.push(winner);
                 items.splice(winningIndex, 1);
 
-                // UI 업데이트
                 renderRanking();
                 updateStatus();
 
-                isSpinning = false;
-                
-                // 만약 항목이 1개 남았다면 자동으로 마지막 순위가 되므로 바로 마감 처리 유도
-                if (items.length === 1) {
-                    document.getElementById('spinBtn').innerText = "마지막 순위 확정하기";
-                    document.getElementById('spinBtn').disabled = false;
-                } else if (items.length > 1) {
-                    document.getElementById('spinBtn').disabled = false;
-                } else {
-                    document.getElementById('spinBtn').innerText = "종료되었습니다";
-                }
-
-                // 남은 항목들로 원반 각도 초기화 상태로 새로 그림
-                // (각도가 리셋되는 자연스러운 처리를 위해 잠깐 회전 효과 끄고 리셋)
+                // 원반 각도 순간 리셋 (티 안 나게 처리)
                 canvas.style.transition = 'none';
                 currentRotation = 0;
                 canvas.style.transform = `rotate(0deg)`;
-                
-                // 브라우저 렌더링 갱신 후 다시 그리기
-                setTimeout(() => {
-                    canvas.style.transition = 'transform 4s cubic-bezier(0.25, 0.1, 0.1, 1)';
-                    drawRoulette();
-                }, 50);
+                drawRoulette();
 
-            }, 4000);
+                // 0.8초간 당첨된 결과를 눈으로 확인할 시간을 준 뒤, 다음 턴 자동으로 실행
+                setTimeout(() => {
+                    if (items.length > 0) {
+                        runNextTurn(); // 남은 게 있으면 다음 녀석 뽑으러 이동
+                    }
+                }, 800);
+
+            }, 1500);
         }
 
-        // 마지막 1개 남은 아이템 자동 확정 처리
+        // 마지막 꼴찌 처리 및 완전 종료
         function finalizeLastItem() {
             ranking.push(items[0]);
             items = [];
+            
             renderRanking();
             updateStatus();
-            drawRoulette();
-            isSpinning = false;
-            document.getElementById('spinBtn').innerText = "정리 완료!";
-            document.getElementById('spinBtn').disabled = true;
+            
+            // 빈 캔버스 클리어
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            isRunning = false;
+            document.getElementById('initBtn').disabled = false;
+            document.getElementById('spinBtn').innerText = "모든 순위 결정 완료";
         }
 
-        // 현재 남은 룰렛 상태 텍스트 노출
         function updateStatus() {
             const statusText = document.getElementById('statusText');
             if (items.length > 0) {
-                statusText.innerHTML = `현재 원반에 남은 항목: <span style="color:#e74a3b;">${items.length}개</span><br>다음은 <span style="color:#4e73df;">${ranking.length + 1}위</span>를 뽑을 차례입니다.`;
+                statusText.innerHTML = `현재 진행 회차: <span style="color:#4e73df;">${ranking.length + 1}위</span> 뽑는 중<br>남은 후보 조각: <span style="color:#e74a3b;">${items.length}개</span>`;
             } else {
-                statusText.innerHTML = "🎉 모든 우선순위가 결정되었습니다!";
+                statusText.innerHTML = "🎉 <b>모든 우선순위 배정이 끝났습니다!</b><br>오른쪽 결과 리스트를 확인하며 일을 처리하세요.";
             }
         }
 
-        // 우측 순위판 갱신
         function renderRanking() {
             const rankingDisplay = document.getElementById('rankingDisplay');
             rankingDisplay.innerHTML = "";
