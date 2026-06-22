@@ -191,20 +191,20 @@
 </head>
 <body>
 
-    <h1>🎯 원반 돌리기 & 우선순위 투두리스트</h1>
+    <h1>🎯 Task Priority To-Do List</h1>
 
     <div class="container">
         <div class="panel">
             <h3>1. 데이터 입력</h3>
             <div class="input-group">
-                <label for="sessionName">📋 작업 대주제</label>
+                <label for="sessionName">📋 무슨 일부터 할까?</label>
                 <input type="text" id="sessionName" placeholder="주제를 입력 안 하면 날짜가 자동 지정됩니다.">
             </div>
             <div class="input-group">
-                <label for="inputData">✏️ 상세 작업 항목 (한 줄에 하나씩)</label>
-                <textarea id="inputData" placeholder="박지현인터뷰&#10;와일드씽&#10;이반리장만옥&#10;백룸&#10;남편들"></textarea>
+                <label for="inputData">✏️ 이것 저것, 할 일이 많네...(한 줄에 하나씩)</label>
+                <textarea id="inputData" placeholder="이 일;저 일;그 일"></textarea>
             </div>
-            <button id="initBtn" class="btn-primary" onclick="initRoulette()">원반 생성/초기화</button>
+            <button id="initBtn" class="btn-primary" onclick="initRoulette()">Spin!</button>
             
             <div style="margin-top: 20px;">
                 <p id="statusText" style="font-weight: bold; color: #555; line-height: 1.6;"></p>
@@ -216,11 +216,11 @@
             <div class="canvas-container">
                 <canvas id="rouletteCanvas" width="320" height="320"></canvas>
             </div>
-            <button id="spinBtn" class="btn-success" onclick="startAutoSpin()" style="margin-top: 20px; width: 220px;" disabled>자동 전체 돌리기 시작</button>
+            <button id="spinBtn" class="btn-success" onclick="startAutoSpin()" style="margin-top: 20px; width: 220px;" disabled>Start!!!!</button>
         </div>
 
         <div class="panel">
-            <h3>📋 결정된 우선순위 순서 (To-Do 상자)</h3>
+            <h3>📋 To-Do List</h3>
             
             <div class="backup-zone">
                 <button class="btn-backup" onclick="exportData()">💾 전체 백업 (파일 다운)</button>
