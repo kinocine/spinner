@@ -78,6 +78,22 @@
         .btn-success:disabled { background-color: #cccccc; cursor: not-allowed; }
         .btn-danger { background-color: #e74a3b; color: white; padding: 6px 10px; font-size: 12px; width: auto; margin: 0; }
         
+        /* 백업 존 스타일 */
+        .backup-zone {
+            background: #f8f9fc;
+            border: 1px solid #e3e6f0;
+            border-radius: 8px;
+            padding: 12px;
+            margin-bottom: 15px;
+            display: flex;
+            gap: 10px;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .btn-backup { background-color: #36b9cc; color: white; font-size: 13px; padding: 8px; margin: 0; flex: 1; }
+        .btn-restore { background-color: #f6c23e; color: #333; font-size: 13px; padding: 8px; margin: 0; flex: 1; position: relative; overflow: hidden; text-align: center; border-radius: 6px; font-weight: bold; cursor: pointer;}
+        .btn-restore input[type="file"] { position: absolute; top: 0; left: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
+
         .roulette-area {
             display: flex;
             flex-direction: column;
@@ -106,7 +122,6 @@
             transition: transform 1.2s cubic-bezier(0.25, 0.1, 0.25, 1);
         }
         
-        /* 할 일 관리 상자(세션) 스타일 */
         .session-box {
             background: #f8f9fc;
             border: 1px solid #e3e6f0;
@@ -168,23 +183,10 @@
         .todo-actions .btn-done { background-color: #1cc88a; }
         .todo-actions .btn-skip { background-color: #f6c23e; color: #333; }
         
-        /* 상태별 스타일 변화 */
-        .status-done {
-            background-color: #eaecf4;
-            opacity: 0.6;
-        }
-        .status-done .todo-text {
-            text-decoration: line-through;
-            color: #858796;
-        }
-        .status-skip {
-            background-color: #fff3cd;
-            border-color: #ffeeba;
-        }
-        .status-skip .todo-text {
-            font-style: italic;
-            font-weight: bold;
-        }
+        .status-done { background-color: #eaecf4; opacity: 0.6; }
+        .status-done .todo-text { text-decoration: line-through; color: #858796; }
+        .status-skip { background-color: #fff3cd; border-color: #ffeeba; }
+        .status-skip .todo-text { font-style: italic; font-weight: bold; }
     </style>
 </head>
 <body>
@@ -195,7 +197,7 @@
         <div class="panel">
             <h3>1. 데이터 입력</h3>
             <div class="input-group">
-                <label for="sessionName">📋 작업 대주제 (예: 영화 리뷰 리스트, 업무 내기 등)</label>
+                <label for="sessionName">📋 작업 대주제</label>
                 <input type="text" id="sessionName" placeholder="주제를 입력 안 하면 날짜가 자동 지정됩니다.">
             </div>
             <div class="input-group">
@@ -219,8 +221,16 @@
 
         <div class="panel">
             <h3>📋 결정된 우선순위 순서 (To-Do 상자)</h3>
-            <div id="todoContainer">
+            
+            <div class="backup-zone">
+                <button class="btn-backup" onclick="exportData()">💾 전체 백업 (파일 다운)</button>
+                <div class="btn-restore">
+                    📂 백업 복구 (파일 선택)
+                    <input type="file" id="importFile" accept=".json" onchange="importData(this)">
                 </div>
+            </div>
+
+            <div id="todoContainer"></div>
         </div>
     </div>
 
@@ -229,13 +239,12 @@
         let ranking = [];
         let currentRotation = 0;
         let isRunning = false;
-        let savedSessions = []; // 모든 저장된 세션 리스트
+        let savedSessions = []; 
         
         const canvas = document.getElementById('rouletteCanvas');
         const ctx = canvas.getContext('2d');
         const colors = ["#ff9ff3", "#feca57", "#ff6b6b", "#48dbfb", "#1dd1a1", "#a29bfe", "#ffeaa7", "#fab1a0", "#74b9ff", "#55efc4"];
 
-        // 페이지 로드 시 로컬 스토리지에서 기존 할 일 데이터를 불러옴
         window.onload = function() {
             if(localStorage.getItem('rouletteTodoSessions')) {
                 savedSessions = JSON.parse(localStorage.getItem('rouletteTodoSessions'));
@@ -243,21 +252,69 @@
             }
         };
 
+        // 데이터 백업 (파일 추출) 기능
+        function exportData() {
+            if (savedSessions.length === 0) {
+                alert("백업할 데이터가 없습니다.");
+                return;
+            }
+            const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(savedSessions));
+            const downloadAnchor = document.createElement('a');
+            
+            const now = new Date();
+            const dateStr = `${now.getFullYear()}${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}`;
+            
+            downloadAnchor.setAttribute("href", dataStr);
+            downloadAnchor.setAttribute("download", `kinocine_todo_backup_${dateStr}.json`);
+            document.body.appendChild(downloadAnchor);
+            downloadAnchor.click();
+            downloadAnchor.remove();
+        }
+
+        // 데이터 복구 (파일 주입) 기능
+        function importData(input) {
+            const file = input.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const imported = JSON.parse(e.target.result);
+                    if (Array.isArray(imported)) {
+                        if (confirm("기존 스마트폰의 데이터에 백업 파일을 합치시겠습니까?\n(취소를 누르면 기존 데이터를 지우고 백업 파일로 완전히 대체합니다)")) {
+                            // 합치기 (중복 id 걸러내기)
+                            const currentIds = savedSessions.map(s => s.id);
+                            imported.forEach(session => {
+                                if (!currentIds.includes(session.id)) {
+                                    savedSessions.push(session);
+                                }
+                            });
+                            // ID 기준 최신순 정렬
+                            savedSessions.sort((a,b) => b.id - a.id);
+                        } else {
+                            // 덮어쓰기
+                            savedSessions = imported;
+                        }
+                        saveToLocalStorage();
+                        renderAllSessions();
+                        alert("성공적으로 데이터를 복구했습니다!");
+                    } else {
+                        alert("올바른 백업 파일 형식이 아닙니다.");
+                    }
+                } catch (err) {
+                    alert("파일을 읽는 중 오류가 발생했습니다.");
+                }
+            };
+            reader.readAsText(file);
+            input.value = ""; // 파일 선택창 초기화
+        }
+
         function initRoulette() {
             if (isRunning) return;
-            
             const text = document.getElementById('inputData').value.trim();
-            if (!text) {
-                alert("데이터를 입력해주세요.");
-                return;
-            }
-            
+            if (!text) { alert("데이터를 입력해주세요."); return; }
             items = text.split('\n').map(item => item.trim()).filter(item => item !== "");
-            
-            if (items.length < 2) {
-                alert("최소 2개 이상의 항목을 입력해주세요.");
-                return;
-            }
+            if (items.length < 2) { alert("최소 2개 이상의 항목을 입력해주세요."); return; }
 
             ranking = []; 
             document.getElementById('spinBtn').disabled = false;
@@ -265,7 +322,6 @@
             currentRotation = 0;
             canvas.style.transition = 'none';
             canvas.style.transform = `rotate(0deg)`;
-            
             updateStatus();
             drawRoulette();
         }
@@ -274,30 +330,16 @@
             const numSegments = items.length;
             const anglePerSegment = (2 * Math.PI) / numSegments;
             const radius = canvas.width / 2;
-
             ctx.clearRect(0, 0, canvas.width, canvas.height);
             if (numSegments === 0) return;
 
             items.forEach((item, index) => {
                 const startAngle = index * anglePerSegment - Math.PI / 2; 
                 const endAngle = startAngle + anglePerSegment;
-
-                ctx.beginPath();
-                ctx.moveTo(radius, radius);
-                ctx.arc(radius, radius, radius, startAngle, endAngle);
-                ctx.closePath();
-                ctx.fillStyle = colors[index % colors.length];
-                ctx.fill();
-                ctx.stroke();
-
-                ctx.save();
-                ctx.translate(radius, radius);
-                ctx.rotate(startAngle + anglePerSegment / 2);
-                ctx.textAlign = "right";
-                ctx.fillStyle = "#333";
-                ctx.font = "bold 13px 'Malgun Gothic'";
-                ctx.fillText(item.length > 8 ? item.substring(0,7)+".." : item, radius - 15, 5);
-                ctx.restore();
+                ctx.beginPath(); ctx.moveTo(radius, radius); ctx.arc(radius, radius, radius, startAngle, endAngle); ctx.closePath();
+                ctx.fillStyle = colors[index % colors.length]; ctx.fill(); ctx.stroke();
+                ctx.save(); ctx.translate(radius, radius); ctx.rotate(startAngle + anglePerSegment / 2); ctx.textAlign = "right"; ctx.fillStyle = "#333"; ctx.font = "bold 13px 'Malgun Gothic'";
+                ctx.fillText(item.length > 8 ? item.substring(0,7)+".." : item, radius - 15, 5); ctx.restore();
             });
         }
 
@@ -307,18 +349,12 @@
             document.getElementById('spinBtn').disabled = true;
             document.getElementById('initBtn').disabled = true;
             document.getElementById('spinBtn').innerText = "자동 순위 결정 중...";
-
             runNextTurn();
         }
 
         function runNextTurn() {
             const numSegments = items.length;
-
-            if (numSegments === 1) {
-                finalizeLastItem();
-                return;
-            }
-
+            if (numSegments === 1) { finalizeLastItem(); return; }
             canvas.style.transition = 'transform 1.2s cubic-bezier(0.25, 0.1, 0.25, 1)';
             const randomSpin = Math.floor(Math.random() * 360) + 720; 
             currentRotation += randomSpin;
@@ -327,170 +363,94 @@
             setTimeout(() => {
                 const actualDegrees = currentRotation % 360;
                 const anglePerSegment = 360 / numSegments;
-                
                 const winningIndex = Math.floor(actualDegrees / anglePerSegment);
                 const winner = items[winningIndex];
-
-                ranking.push(winner);
-                items.splice(winningIndex, 1);
-
+                ranking.push(winner); items.splice(winningIndex, 1);
                 updateStatus();
-
-                canvas.style.transition = 'none';
-                currentRotation = 0;
-                canvas.style.transform = `rotate(0deg)`;
-                drawRoulette();
-
-                setTimeout(() => {
-                    if (items.length > 0) {
-                        runNextTurn();
-                    }
-                }, 500);
-
+                canvas.style.transition = 'none'; currentRotation = 0; canvas.style.transform = `rotate(0deg)`; drawRoulette();
+                setTimeout(() => { if (items.length > 0) runNextTurn(); }, 500);
             }, 1200);
         }
 
         function finalizeLastItem() {
-            ranking.push(items[0]);
-            items = [];
-            updateStatus();
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-            
-            // 모든 순위 확정 시, 새로운 세션(상자) 생성하여 배열에 누적
+            ranking.push(items[0]); items = []; updateStatus(); ctx.clearRect(0, 0, canvas.width, canvas.height);
             saveNewSession();
-            
             isRunning = false;
             document.getElementById('initBtn').disabled = false;
             document.getElementById('spinBtn').innerText = "새로운 원반 대기 중";
         }
 
-        // 새로운 박스로 할 일 리스트 저장
         function saveNewSession() {
             let title = document.getElementById('sessionName').value.trim();
             if (!title) {
                 const now = new Date();
                 title = `${now.getMonth()+1}/${now.getDate()} 작업 리스트 (${ranking.length}개)`;
             }
-
-            // 각 할 일 별 초기 상태는 'ready'
-            const todoItems = ranking.map((task, idx) => {
-                return { rank: idx + 1, text: task, status: 'ready' };
-            });
-
-            const newSession = {
-                id: Date.now(),
-                title: title,
-                todos: todoItems
-            };
-
-            savedSessions.unshift(newSession); // 최신 목록을 가장 위에 배치
+            const todoItems = ranking.map((task, idx) => { return { rank: idx + 1, text: task, status: 'ready' }; });
+            const newSession = { id: Date.now(), title: title, todos: todoItems };
+            savedSessions.unshift(newSession);
             saveToLocalStorage();
             renderAllSessions();
-            
-            // 입력창 초기화
-            document.getElementById('sessionName').value = "";
-            document.getElementById('inputData').value = "";
+            document.getElementById('sessionName').value = ""; document.getElementById('inputData').value = "";
         }
 
-        // 로컬스토리지 저장
-        function saveToLocalStorage() {
-            localStorage.setItem('rouletteTodoSessions', JSON.stringify(savedSessions));
-        }
+        function saveToLocalStorage() { localStorage.setItem('rouletteTodoSessions', JSON.stringify(savedSessions)); }
 
-        // 모든 상자판 그리기
         function renderAllSessions() {
             const container = document.getElementById('todoContainer');
             container.innerHTML = "";
-
             if(savedSessions.length === 0) {
                 container.innerHTML = "<p style='color:#858796; text-align:center;'>결정된 할 일 상자가 비어있습니다.</p>";
                 return;
             }
-
             savedSessions.forEach(session => {
-                const sBox = document.createElement('div');
-                sBox.className = "session-box";
-                
-                // 헤더 영역
-                const sHeader = document.createElement('div');
-                sHeader.className = "session-header";
-                sHeader.innerHTML = `
-                    <span class="session-title">📋 ${session.title}</span>
-                    <button class="btn-danger" onclick="deleteSession(${session.id})">삭제</button>
-                `;
+                const sBox = document.createElement('div'); sBox.className = "session-box";
+                const sHeader = document.createElement('div'); sHeader.className = "session-header";
+                sHeader.innerHTML = `<span class="session-title">📋 ${session.title}</span><button class="btn-danger" onclick="deleteSession(${session.id})">삭제</button>`;
                 sBox.appendChild(sHeader);
-
-                // 할 일 목록 영역
-                const tList = document.createElement('ul');
-                tList.className = "todo-list";
-
+                const tList = document.createElement('ul'); tList.className = "todo-list";
                 session.todos.forEach(todo => {
-                    const tItem = document.createElement('li');
-                    tItem.className = `todo-item status-${todo.status}`;
-                    
+                    const tItem = document.createElement('li'); tItem.className = `todo-item status-${todo.status}`;
                     tItem.innerHTML = `
-                        <div class="todo-left">
-                            <span class="todo-rank">${todo.rank}위</span>
-                            <span class="todo-text">${todo.text}</span>
-                        </div>
+                        <div class="todo-left"><span class="todo-rank">${todo.rank}위</span><span class="todo-text">${todo.text}</span></div>
                         <div class="todo-actions">
                             ${todo.status !== 'done' ? `<button class="btn-done" onclick="changeStatus(${session.id}, ${todo.rank}, 'done')">완료</button>` : ''}
                             ${todo.status === 'ready' ? `<button class="btn-skip" onclick="changeStatus(${session.id}, ${todo.rank}, 'skip')">미루기</button>` : ''}
                             ${todo.status !== 'ready' ? `<button onclick="changeStatus(${session.id}, ${todo.rank}, 'ready')">되돌리기</button>` : ''}
-                        </div>
-                    `;
+                        </div>`;
                     tList.appendChild(tItem);
                 });
-
-                sBox.appendChild(tList);
-                container.appendChild(sBox);
+                sBox.appendChild(tList); container.appendChild(sBox);
             });
         }
 
-        // 완료, 건너뛰기(미루기), 되돌리기 상태 제어
         function changeStatus(sessionId, rank, nextStatus) {
             const session = savedSessions.find(s => s.id === sessionId);
             if (session) {
                 const todo = session.todos.find(t => t.rank === rank);
                 if (todo) {
                     todo.status = nextStatus;
-                    
-                    // 만약 '미루기(skip)' 버튼을 누르면 해당 항목을 리스트의 맨 마지막으로 보냄 (순위 번호는 유지하되 박스 정렬만 이동)
                     if (nextStatus === 'skip') {
-                        const index = session.todos.indexOf(todo);
-                        session.todos.splice(index, 1);
-                        session.todos.push(todo);
-                    } 
-                    // '되돌리기'를 하여 다시 진행할 때 원래 순위 자리 근처로 재정렬
-                    else if (nextStatus === 'ready') {
-                        session.todos.sort((a, b) => {
-                            // ready인 것 먼저, 그다음 skip, 그다음 done 정렬 규칙 부여도 가능하나, 가독성을 위해 순위번호(rank) 순 정렬로 복구
-                            return a.rank - b.rank;
-                        });
+                        const index = session.todos.indexOf(todo); session.todos.splice(index, 1); session.todos.push(todo);
+                    } else if (nextStatus === 'ready') {
+                        session.todos.sort((a, b) => a.rank - b.rank);
                     }
-
-                    saveToLocalStorage();
-                    renderAllSessions();
+                    saveToLocalStorage(); renderAllSessions();
                 }
             }
         }
 
-        // 상자 통째로 지우기
         function deleteSession(sessionId) {
             if(confirm("이 작업 상자 목록을 완전히 삭제하시겠습니까?")) {
                 savedSessions = savedSessions.filter(s => s.id !== sessionId);
-                saveToLocalStorage();
-                renderAllSessions();
+                saveToLocalStorage(); renderAllSessions();
             }
         }
 
         function updateStatus() {
             const statusText = document.getElementById('statusText');
-            if (items.length > 0) {
-                statusText.innerHTML = `현재 진행: <span style="color:#4e73df;">${ranking.length + 1}위</span> 선별 중<br>남은 항목: <span style="color:#e74a3b;">${items.length}개</span>`;
-            } else {
-                statusText.innerHTML = "🎉 <b>원반 뽑기가 완료되어 우측에 할 일 상자가 추가되었습니다!</b>";
-            }
+            if (items.length > 0) { statusText.innerHTML = `현재 진행: <span style="color:#4e73df;">${ranking.length + 1}위</span> 선별 중<br>남은 항목: <span style="color:#e74a3b;">${items.length}개</span>`; }
+            else { statusText.innerHTML = "🎉 <b>원반 뽑기가 완료되어 우측에 할 일 상자가 추가되었습니다!</b>"; }
         }
     </script>
 </body>
