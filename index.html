@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>자동 원반 돌리기 우선순위 결정기</title>
+    <title>원반 돌리기 & 작업 우선순위 관리자</title>
     <style>
         body {
             font-family: 'Malgun Gothic', sans-serif;
@@ -23,7 +23,7 @@
             flex-wrap: wrap;
             gap: 30px;
             justify-content: center;
-            max-width: 1000px;
+            max-width: 1200px;
             width: 100%;
         }
         .panel {
@@ -31,7 +31,7 @@
             padding: 20px;
             border-radius: 12px;
             box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-            min-width: 280px;
+            min-width: 300px;
             flex: 1;
         }
         textarea {
@@ -43,6 +43,22 @@
             border-radius: 6px;
             resize: vertical;
             margin-bottom: 10px;
+        }
+        .input-group {
+            margin-bottom: 15px;
+        }
+        .input-group label {
+            display: block;
+            font-weight: bold;
+            margin-bottom: 5px;
+            color: #4e73df;
+        }
+        .input-group input {
+            width: 100%;
+            padding: 8px;
+            box-sizing: border-box;
+            border: 1px solid #ccc;
+            border-radius: 6px;
         }
         button {
             width: 100%;
@@ -60,13 +76,14 @@
         .btn-success { background-color: #1cc88a; color: white; }
         .btn-success:hover { background-color: #17a673; }
         .btn-success:disabled { background-color: #cccccc; cursor: not-allowed; }
+        .btn-danger { background-color: #e74a3b; color: white; padding: 6px 10px; font-size: 12px; width: auto; margin: 0; }
         
         .roulette-area {
             display: flex;
             flex-direction: column;
             align-items: center;
             position: relative;
-            flex: 1.5;
+            flex: 1.2;
         }
         .pointer {
             width: 0;
@@ -80,45 +97,111 @@
         }
         .canvas-container {
             position: relative;
-            width: 350px;
-            height: 350px;
+            width: 320px;
+            height: 320px;
         }
         canvas {
             border-radius: 50%;
             box-shadow: 0 4px 10px rgba(0,0,0,0.15);
-            transition: transform 1.5s cubic-bezier(0.25, 0.1, 0.25, 1); /* 연속 회전을 위해 돌리는 시간 1.5초로 단축 */
+            transition: transform 1.2s cubic-bezier(0.25, 0.1, 0.25, 1);
         }
         
-        .ranking-list {
-            list-style: none;
-            padding: 0;
+        /* 할 일 관리 상자(세션) 스타일 */
+        .session-box {
+            background: #f8f9fc;
+            border: 1px solid #e3e6f0;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 20px;
         }
-        .ranking-item {
-            padding: 10px;
-            border-bottom: 1px solid #eee;
-            font-size: 16px;
+        .session-header {
             display: flex;
             justify-content: space-between;
-            animation: fadeIn 0.5s ease-in-out;
+            align-items: center;
+            border-bottom: 2px solid #4e73df;
+            padding-bottom: 8px;
+            margin-bottom: 10px;
         }
-        .rank-num {
+        .session-title {
+            font-weight: bold;
+            font-size: 16px;
+            color: #333;
+        }
+        .todo-list {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+        .todo-item {
+            background: white;
+            border: 1px solid #dddfeb;
+            border-radius: 6px;
+            padding: 10px 12px;
+            margin-bottom: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            font-size: 14px;
+        }
+        .todo-left {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .todo-rank {
             font-weight: bold;
             color: #4e73df;
+            min-width: 35px;
         }
-        @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(-10px); }
-            to { opacity: 1; transform: translateY(0); }
+        .todo-text {
+            color: #333;
+        }
+        .todo-actions button {
+            width: auto;
+            margin: 0 2px;
+            padding: 4px 8px;
+            font-size: 12px;
+            border-radius: 4px;
+            background: #858796;
+            color: white;
+        }
+        .todo-actions .btn-done { background-color: #1cc88a; }
+        .todo-actions .btn-skip { background-color: #f6c23e; color: #333; }
+        
+        /* 상태별 스타일 변화 */
+        .status-done {
+            background-color: #eaecf4;
+            opacity: 0.6;
+        }
+        .status-done .todo-text {
+            text-decoration: line-through;
+            color: #858796;
+        }
+        .status-skip {
+            background-color: #fff3cd;
+            border-color: #ffeeba;
+        }
+        .status-skip .todo-text {
+            font-style: italic;
+            font-weight: bold;
         }
     </style>
 </head>
 <body>
 
-    <h1>🎯 자동 연속 원반 돌리기</h1>
+    <h1>🎯 원반 돌리기 & 우선순위 투두리스트</h1>
 
     <div class="container">
         <div class="panel">
             <h3>1. 데이터 입력</h3>
-            <textarea id="inputData" placeholder="한 줄에 하나씩 항목을 입력하세요.&#10;예시:&#10;오징어덮밥&#10;돈까스&#10;코다리&#10;부대찌개&#10;갈비탕"></textarea>
+            <div class="input-group">
+                <label for="sessionName">📋 작업 대주제 (예: 영화 리뷰 리스트, 업무 내기 등)</label>
+                <input type="text" id="sessionName" placeholder="주제를 입력 안 하면 날짜가 자동 지정됩니다.">
+            </div>
+            <div class="input-group">
+                <label for="inputData">✏️ 상세 작업 항목 (한 줄에 하나씩)</label>
+                <textarea id="inputData" placeholder="박지현인터뷰&#10;와일드씽&#10;이반리장만옥&#10;백룸&#10;남편들"></textarea>
+            </div>
             <button id="initBtn" class="btn-primary" onclick="initRoulette()">원반 생성/초기화</button>
             
             <div style="margin-top: 20px;">
@@ -129,15 +212,15 @@
         <div class="roulette-area">
             <div class="pointer"></div>
             <div class="canvas-container">
-                <canvas id="rouletteCanvas" width="350" height="350"></canvas>
+                <canvas id="rouletteCanvas" width="320" height="320"></canvas>
             </div>
             <button id="spinBtn" class="btn-success" onclick="startAutoSpin()" style="margin-top: 20px; width: 220px;" disabled>자동 전체 돌리기 시작</button>
         </div>
 
         <div class="panel">
-            <h3>📋 결정된 우선순위 순서</h3>
-            <ul id="rankingDisplay" class="ranking-list">
-                </ul>
+            <h3>📋 결정된 우선순위 순서 (To-Do 상자)</h3>
+            <div id="todoContainer">
+                </div>
         </div>
     </div>
 
@@ -146,10 +229,19 @@
         let ranking = [];
         let currentRotation = 0;
         let isRunning = false;
+        let savedSessions = []; // 모든 저장된 세션 리스트
         
         const canvas = document.getElementById('rouletteCanvas');
         const ctx = canvas.getContext('2d');
         const colors = ["#ff9ff3", "#feca57", "#ff6b6b", "#48dbfb", "#1dd1a1", "#a29bfe", "#ffeaa7", "#fab1a0", "#74b9ff", "#55efc4"];
+
+        // 페이지 로드 시 로컬 스토리지에서 기존 할 일 데이터를 불러옴
+        window.onload = function() {
+            if(localStorage.getItem('rouletteTodoSessions')) {
+                savedSessions = JSON.parse(localStorage.getItem('rouletteTodoSessions'));
+                renderAllSessions();
+            }
+        };
 
         function initRoulette() {
             if (isRunning) return;
@@ -168,7 +260,6 @@
             }
 
             ranking = []; 
-            document.getElementById('rankingDisplay').innerHTML = "";
             document.getElementById('spinBtn').disabled = false;
             document.getElementById('spinBtn').innerText = "자동 전체 돌리기 시작";
             currentRotation = 0;
@@ -185,7 +276,6 @@
             const radius = canvas.width / 2;
 
             ctx.clearRect(0, 0, canvas.width, canvas.height);
-
             if (numSegments === 0) return;
 
             items.forEach((item, index) => {
@@ -205,13 +295,12 @@
                 ctx.rotate(startAngle + anglePerSegment / 2);
                 ctx.textAlign = "right";
                 ctx.fillStyle = "#333";
-                ctx.font = "bold 14px 'Malgun Gothic'";
-                ctx.fillText(item, radius - 20, 5);
+                ctx.font = "bold 13px 'Malgun Gothic'";
+                ctx.fillText(item.length > 8 ? item.substring(0,7)+".." : item, radius - 15, 5);
                 ctx.restore();
             });
         }
 
-        // 마스터 제어 함수: 자동 뺑뺑이 루프 시작
         function startAutoSpin() {
             if (isRunning || items.length === 0) return;
             isRunning = true;
@@ -222,25 +311,19 @@
             runNextTurn();
         }
 
-        // 재귀적으로 한 턴씩 돌리는 핵심 로직
         function runNextTurn() {
             const numSegments = items.length;
 
-            // 1개만 남았을 때는 돌리지 않고 바로 마지막 순위 꽂고 끝내기
             if (numSegments === 1) {
                 finalizeLastItem();
                 return;
             }
 
-            // 회전 애니메이션 복구
-            canvas.style.transition = 'transform 1.5s cubic-bezier(0.25, 0.1, 0.25, 1)';
-            
-            // 한 번 돌 때 시원하게 돌도록 각도 무작위 추가
+            canvas.style.transition = 'transform 1.2s cubic-bezier(0.25, 0.1, 0.25, 1)';
             const randomSpin = Math.floor(Math.random() * 360) + 720; 
             currentRotation += randomSpin;
             canvas.style.transform = `rotate(${-currentRotation}deg)`;
 
-            // 1.5초 돌고 멈춘 직후 결과 처리
             setTimeout(() => {
                 const actualDegrees = currentRotation % 360;
                 const anglePerSegment = 360 / numSegments;
@@ -248,63 +331,166 @@
                 const winningIndex = Math.floor(actualDegrees / anglePerSegment);
                 const winner = items[winningIndex];
 
-                // 순위판에 넣고 원반에서 제거
                 ranking.push(winner);
                 items.splice(winningIndex, 1);
 
-                renderRanking();
                 updateStatus();
 
-                // 원반 각도 순간 리셋 (티 안 나게 처리)
                 canvas.style.transition = 'none';
                 currentRotation = 0;
                 canvas.style.transform = `rotate(0deg)`;
                 drawRoulette();
 
-                // 0.8초간 당첨된 결과를 눈으로 확인할 시간을 준 뒤, 다음 턴 자동으로 실행
                 setTimeout(() => {
                     if (items.length > 0) {
-                        runNextTurn(); // 남은 게 있으면 다음 녀석 뽑으러 이동
+                        runNextTurn();
                     }
-                }, 800);
+                }, 500);
 
-            }, 1500);
+            }, 1200);
         }
 
-        // 마지막 꼴찌 처리 및 완전 종료
         function finalizeLastItem() {
             ranking.push(items[0]);
             items = [];
-            
-            renderRanking();
             updateStatus();
-            
-            // 빈 캔버스 클리어
             ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            // 모든 순위 확정 시, 새로운 세션(상자) 생성하여 배열에 누적
+            saveNewSession();
             
             isRunning = false;
             document.getElementById('initBtn').disabled = false;
-            document.getElementById('spinBtn').innerText = "모든 순위 결정 완료";
+            document.getElementById('spinBtn').innerText = "새로운 원반 대기 중";
+        }
+
+        // 새로운 박스로 할 일 리스트 저장
+        function saveNewSession() {
+            let title = document.getElementById('sessionName').value.trim();
+            if (!title) {
+                const now = new Date();
+                title = `${now.getMonth()+1}/${now.getDate()} 작업 리스트 (${ranking.length}개)`;
+            }
+
+            // 각 할 일 별 초기 상태는 'ready'
+            const todoItems = ranking.map((task, idx) => {
+                return { rank: idx + 1, text: task, status: 'ready' };
+            });
+
+            const newSession = {
+                id: Date.now(),
+                title: title,
+                todos: todoItems
+            };
+
+            savedSessions.unshift(newSession); // 최신 목록을 가장 위에 배치
+            saveToLocalStorage();
+            renderAllSessions();
+            
+            // 입력창 초기화
+            document.getElementById('sessionName').value = "";
+            document.getElementById('inputData').value = "";
+        }
+
+        // 로컬스토리지 저장
+        function saveToLocalStorage() {
+            localStorage.setItem('rouletteTodoSessions', JSON.stringify(savedSessions));
+        }
+
+        // 모든 상자판 그리기
+        function renderAllSessions() {
+            const container = document.getElementById('todoContainer');
+            container.innerHTML = "";
+
+            if(savedSessions.length === 0) {
+                container.innerHTML = "<p style='color:#858796; text-align:center;'>결정된 할 일 상자가 비어있습니다.</p>";
+                return;
+            }
+
+            savedSessions.forEach(session => {
+                const sBox = document.createElement('div');
+                sBox.className = "session-box";
+                
+                // 헤더 영역
+                const sHeader = document.createElement('div');
+                sHeader.className = "session-header";
+                sHeader.innerHTML = `
+                    <span class="session-title">📋 ${session.title}</span>
+                    <button class="btn-danger" onclick="deleteSession(${session.id})">삭제</button>
+                `;
+                sBox.appendChild(sHeader);
+
+                // 할 일 목록 영역
+                const tList = document.createElement('ul');
+                tList.className = "todo-list";
+
+                session.todos.forEach(todo => {
+                    const tItem = document.createElement('li');
+                    tItem.className = `todo-item status-${todo.status}`;
+                    
+                    tItem.innerHTML = `
+                        <div class="todo-left">
+                            <span class="todo-rank">${todo.rank}위</span>
+                            <span class="todo-text">${todo.text}</span>
+                        </div>
+                        <div class="todo-actions">
+                            ${todo.status !== 'done' ? `<button class="btn-done" onclick="changeStatus(${session.id}, ${todo.rank}, 'done')">완료</button>` : ''}
+                            ${todo.status === 'ready' ? `<button class="btn-skip" onclick="changeStatus(${session.id}, ${todo.rank}, 'skip')">미루기</button>` : ''}
+                            ${todo.status !== 'ready' ? `<button onclick="changeStatus(${session.id}, ${todo.rank}, 'ready')">되돌리기</button>` : ''}
+                        </div>
+                    `;
+                    tList.appendChild(tItem);
+                });
+
+                sBox.appendChild(tList);
+                container.appendChild(sBox);
+            });
+        }
+
+        // 완료, 건너뛰기(미루기), 되돌리기 상태 제어
+        function changeStatus(sessionId, rank, nextStatus) {
+            const session = savedSessions.find(s => s.id === sessionId);
+            if (session) {
+                const todo = session.todos.find(t => t.rank === rank);
+                if (todo) {
+                    todo.status = nextStatus;
+                    
+                    // 만약 '미루기(skip)' 버튼을 누르면 해당 항목을 리스트의 맨 마지막으로 보냄 (순위 번호는 유지하되 박스 정렬만 이동)
+                    if (nextStatus === 'skip') {
+                        const index = session.todos.indexOf(todo);
+                        session.todos.splice(index, 1);
+                        session.todos.push(todo);
+                    } 
+                    // '되돌리기'를 하여 다시 진행할 때 원래 순위 자리 근처로 재정렬
+                    else if (nextStatus === 'ready') {
+                        session.todos.sort((a, b) => {
+                            // ready인 것 먼저, 그다음 skip, 그다음 done 정렬 규칙 부여도 가능하나, 가독성을 위해 순위번호(rank) 순 정렬로 복구
+                            return a.rank - b.rank;
+                        });
+                    }
+
+                    saveToLocalStorage();
+                    renderAllSessions();
+                }
+            }
+        }
+
+        // 상자 통째로 지우기
+        function deleteSession(sessionId) {
+            if(confirm("이 작업 상자 목록을 완전히 삭제하시겠습니까?")) {
+                savedSessions = savedSessions.filter(s => s.id !== sessionId);
+                saveToLocalStorage();
+                renderAllSessions();
+            }
         }
 
         function updateStatus() {
             const statusText = document.getElementById('statusText');
             if (items.length > 0) {
-                statusText.innerHTML = `현재 진행 회차: <span style="color:#4e73df;">${ranking.length + 1}위</span> 뽑는 중<br>남은 후보 조각: <span style="color:#e74a3b;">${items.length}개</span>`;
+                statusText.innerHTML = `현재 진행: <span style="color:#4e73df;">${ranking.length + 1}위</span> 선별 중<br>남은 항목: <span style="color:#e74a3b;">${items.length}개</span>`;
             } else {
-                statusText.innerHTML = "🎉 <b>모든 우선순위 배정이 끝났습니다!</b><br>오른쪽 결과 리스트를 확인하며 일을 처리하세요.";
+                statusText.innerHTML = "🎉 <b>원반 뽑기가 완료되어 우측에 할 일 상자가 추가되었습니다!</b>";
             }
-        }
-
-        function renderRanking() {
-            const rankingDisplay = document.getElementById('rankingDisplay');
-            rankingDisplay.innerHTML = "";
-            ranking.forEach((item, index) => {
-                const li = document.createElement('li');
-                li.className = "ranking-item";
-                li.innerHTML = `<span class="rank-num">${index + 1}위</span> <span>${item}</span>`;
-                rankingDisplay.appendChild(li);
-            });
         }
     </script>
 </body>
