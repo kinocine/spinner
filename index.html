@@ -214,6 +214,11 @@
         .status-done .todo-text { text-decoration: line-through; color: #858796; }
         .status-skip { background-color: #fff3cd; border-color: #ffeeba; }
         .status-skip .todo-text { font-style: italic; font-weight: bold; }
+
+        /* 재지정 후 완료된 항목들이 쌓이는 블랙 스타일 */
+        .status-done-archive { background-color: #3a3b45; border-color: #1c1d22; color: #fff; }
+        .status-done-archive .todo-text { text-decoration: line-through; color: #b7b9cc; }
+        .status-done-archive .todo-rank { color: #f6c23e; }
     </style>
 </head>
 <body>
@@ -406,8 +411,11 @@
             let title = document.getElementById('sessionName').value.trim();
             if (!title) {
                 const now = new Date();
-                title = `${now.getMonth()+1}/${now.getDate()} 작업 리스트 (${ranking.length}개)`;
+                title = `${now.getMonth()+1}/${now.getDate()} 작업 리스트 (0개)`;
             }
+            // 전체 개수 업데이트용 보정
+            title = title.replace(/\(\d+개\)/, `(${ranking.length}개)`);
+
             const todoItems = ranking.map((task, idx) => { return { rank: idx + 1, text: task, status: 'ready' }; });
             const newSession = { id: Date.now(), title: title, todos: todoItems };
             savedSessions.unshift(newSession);
@@ -431,7 +439,6 @@
                 sHeader.innerHTML = `<span class="session-title">📋 ${session.title}</span><button class="btn-danger" onclick="deleteSession(${session.id})">삭제</button>`;
                 sBox.appendChild(sHeader);
 
-                // [추가 구현] 새로운 일 추가 및 재지정 입력창 영역
                 const addZone = document.createElement('div');
                 addZone.className = "session-add-zone";
                 addZone.innerHTML = `
@@ -441,95 +448,4 @@
                 sBox.appendChild(addZone);
 
                 const tList = document.createElement('ul'); tList.className = "todo-list";
-                session.todos.forEach(todo => {
-                    const tItem = document.createElement('li'); tItem.className = `todo-item status-${todo.status}`;
-                    tItem.innerHTML = `
-                        <div class="todo-left"><span class="todo-rank">${todo.rank}위</span><span class="todo-text">${todo.text}</span></div>
-                        <div class="todo-actions">
-                            ${todo.status !== 'done' ? `<button class="btn-done" onclick="changeStatus(${session.id}, ${todo.rank}, 'done')">완료</button>` : ''}
-                            ${todo.status === 'ready' ? `<button class="btn-skip" onclick="changeStatus(${session.id}, ${todo.rank}, 'skip')">미루기</button>` : ''}
-                            ${todo.status !== 'ready' ? `<button onclick="changeStatus(${session.id}, ${todo.rank}, 'ready')">되돌리기</button>` : ''}
-                        </div>`;
-                    tList.appendChild(tItem);
-                });
-                sBox.appendChild(tList); container.appendChild(sBox);
-            });
-        }
-
-        // [추가 구현] 기존 미완료 업무 + 새 업무를 합쳐서 입력칸으로 토스해주는 핵심 함수
-        function reSpinWithNewItems(sessionId) {
-            if (isRunning) { alert("현재 룰렛이 작동 중입니다."); return; }
-            
-            const session = savedSessions.find(s => s.id === sessionId);
-            if (!session) return;
-
-            const inputEl = document.getElementById(`addInput_${sessionId}`);
-            const newText = inputEl.value.trim();
-            
-            // 아직 완료('done')되지 않은 순수한 할 일 목록 추출
-            const remainingTasks = session.todos
-                .filter(todo => todo.status !== 'done')
-                .map(todo => todo.text);
-
-            // 추가 입력값 분해 (쉼표, 세미콜론, 줄바꿈 대응)
-            let newTasks = [];
-            if (newText) {
-                newTasks = newText.split(/[,;\n]/).map(t => t.trim()).filter(t => t !== "");
-            }
-
-            const totalTasks = [...remainingTasks, ...newTasks];
-
-            if (totalTasks.length < 2) {
-                alert("기존 남은 일과 새 일을 합쳐 최소 2개 이상의 항목이 필요합니다.");
-                return;
-            }
-
-            // 왼쪽 데이터 입력창으로 셋팅 튕겨주기
-            document.getElementById('sessionName').value = session.title.replace(/ \(\d+개\)/, "") + " 수정본";
-            document.getElementById('inputData').value = totalTasks.join("\n");
-
-            // 기존 세션 박스는 깔끔하게 정리 (원하는 경우 주석 처리하여 유지 가능)
-            if(confirm("이 상자의 미완료 목록과 새 항목을 왼쪽 원반 입력창으로 이동합니다.\n(기존 상자는 삭제됩니다)")) {
-                savedSessions = savedSessions.filter(s => s.id !== sessionId);
-                saveToLocalStorage();
-                renderAllSessions();
-            }
-
-            // 자동으로 초기 로드 트리거 발동
-            initRoulette();
-            
-            // 화면 상단 입력창으로 부드럽게 스크롤
-            window.scrollTo({ top: 0, behavior: 'smooth' });
-        }
-
-        function changeStatus(sessionId, rank, nextStatus) {
-            const session = savedSessions.find(s => s.id === sessionId);
-            if (session) {
-                const todo = session.todos.find(t => t.rank === rank);
-                if (todo) {
-                    todo.status = nextStatus;
-                    if (nextStatus === 'skip') {
-                        const index = session.todos.indexOf(todo); session.todos.splice(index, 1); session.todos.push(todo);
-                    } else if (nextStatus === 'ready') {
-                        session.todos.sort((a, b) => a.rank - b.rank);
-                    }
-                    saveToLocalStorage(); renderAllSessions();
-                }
-            }
-        }
-
-        function deleteSession(sessionId) {
-            if(confirm("이 작업 상자 목록을 완전히 삭제하시겠습니까?")) {
-                savedSessions = savedSessions.filter(s => s.id !== sessionId);
-                saveToLocalStorage(); renderAllSessions();
-            }
-        }
-
-        function updateStatus() {
-            const statusText = document.getElementById('statusText');
-            if (items.length > 0) { statusText.innerHTML = `현재 진행: <span style="color:#4e73df;">${ranking.length + 1}위</span> 선별 중<br>남은 항목: <span style="color:#e74a3b;">${items.length}개</span>`; }
-            else { statusText.innerHTML = "🎉 <b>원반 뽑기가 완료되어 우측에 할 일 상자가 추가되었습니다!</b>"; }
-        }
-    </script>
-</body>
-</html>
+                session
