@@ -91,7 +91,7 @@
             align-items: center;
         }
         .btn-backup { background-color: #36b9cc; color: white; font-size: 13px; padding: 8px; margin: 0; flex: 1; }
-        .btn-restore { background-color: #f6c23e; color: #333; font-size: 13px; padding: 8px; margin: 0; flex: 1; position: relative; overflow: hidden; text-align: center; border-radius: 6px; font-weight: bold; cursor: pointer;}
+        .btn-restore { background-color: #f6c23e; color: #333; font-size: 13px; padding: 8px; margin: 0; position: relative; overflow: hidden; text-align: center; border-radius: 6px; font-weight: bold; cursor: pointer;}
         .btn-restore input[type="file"] { position: absolute; top: 0; left: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
 
         .roulette-area {
@@ -142,6 +142,33 @@
             font-size: 16px;
             color: #333;
         }
+        
+        /* 추가 항목 입력 영역 스타일 */
+        .session-add-zone {
+            display: flex;
+            gap: 6px;
+            margin-bottom: 10px;
+        }
+        .session-add-zone input {
+            flex: 1;
+            padding: 6px 8px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            font-size: 13px;
+        }
+        .session-add-zone button {
+            width: auto;
+            margin: 0;
+            padding: 6px 12px;
+            font-size: 13px;
+            background-color: #4e73df;
+            color: white;
+            border-radius: 4px;
+        }
+        .session-add-zone button:hover {
+            background-color: #2e59d9;
+        }
+
         .todo-list {
             list-style: none;
             padding: 0;
@@ -202,7 +229,7 @@
             </div>
             <div class="input-group">
                 <label for="inputData">✏️ 이것 저것, 할 일이 많네...(한 줄에 하나씩)</label>
-                <textarea id="inputData" placeholder="이 일;저 일;그 일"></textarea>
+                <textarea id="inputData" placeholder="이 일&#10;저 일&#10;그 일"></textarea>
             </div>
             <button id="initBtn" class="btn-primary" onclick="initRoulette()">Spin!</button>
             
@@ -252,7 +279,6 @@
             }
         };
 
-        // 데이터 백업 (파일 추출) 기능
         function exportData() {
             if (savedSessions.length === 0) {
                 alert("백업할 데이터가 없습니다.");
@@ -271,7 +297,6 @@
             downloadAnchor.remove();
         }
 
-        // 데이터 복구 (파일 주입) 기능
         function importData(input) {
             const file = input.files[0];
             if (!file) return;
@@ -282,17 +307,14 @@
                     const imported = JSON.parse(e.target.result);
                     if (Array.isArray(imported)) {
                         if (confirm("기존 스마트폰의 데이터에 백업 파일을 합치시겠습니까?\n(취소를 누르면 기존 데이터를 지우고 백업 파일로 완전히 대체합니다)")) {
-                            // 합치기 (중복 id 걸러내기)
                             const currentIds = savedSessions.map(s => s.id);
                             imported.forEach(session => {
                                 if (!currentIds.includes(session.id)) {
                                     savedSessions.push(session);
                                 }
                             });
-                            // ID 기준 최신순 정렬
                             savedSessions.sort((a,b) => b.id - a.id);
                         } else {
-                            // 덮어쓰기
                             savedSessions = imported;
                         }
                         saveToLocalStorage();
@@ -306,7 +328,7 @@
                 }
             };
             reader.readAsText(file);
-            input.value = ""; // 파일 선택창 초기화
+            input.value = ""; 
         }
 
         function initRoulette() {
@@ -408,6 +430,16 @@
                 const sHeader = document.createElement('div'); sHeader.className = "session-header";
                 sHeader.innerHTML = `<span class="session-title">📋 ${session.title}</span><button class="btn-danger" onclick="deleteSession(${session.id})">삭제</button>`;
                 sBox.appendChild(sHeader);
+
+                // [추가 구현] 새로운 일 추가 및 재지정 입력창 영역
+                const addZone = document.createElement('div');
+                addZone.className = "session-add-zone";
+                addZone.innerHTML = `
+                    <input type="text" id="addInput_${session.id}" placeholder="새 일 추가 (여러 개는 쉼표나 세미콜론 구분)">
+                    <button onclick="reSpinWithNewItems(${session.id})">추가 후 재지정</button>
+                `;
+                sBox.appendChild(addZone);
+
                 const tList = document.createElement('ul'); tList.className = "todo-list";
                 session.todos.forEach(todo => {
                     const tItem = document.createElement('li'); tItem.className = `todo-item status-${todo.status}`;
@@ -422,6 +454,52 @@
                 });
                 sBox.appendChild(tList); container.appendChild(sBox);
             });
+        }
+
+        // [추가 구현] 기존 미완료 업무 + 새 업무를 합쳐서 입력칸으로 토스해주는 핵심 함수
+        function reSpinWithNewItems(sessionId) {
+            if (isRunning) { alert("현재 룰렛이 작동 중입니다."); return; }
+            
+            const session = savedSessions.find(s => s.id === sessionId);
+            if (!session) return;
+
+            const inputEl = document.getElementById(`addInput_${sessionId}`);
+            const newText = inputEl.value.trim();
+            
+            // 아직 완료('done')되지 않은 순수한 할 일 목록 추출
+            const remainingTasks = session.todos
+                .filter(todo => todo.status !== 'done')
+                .map(todo => todo.text);
+
+            // 추가 입력값 분해 (쉼표, 세미콜론, 줄바꿈 대응)
+            let newTasks = [];
+            if (newText) {
+                newTasks = newText.split(/[,;\n]/).map(t => t.trim()).filter(t => t !== "");
+            }
+
+            const totalTasks = [...remainingTasks, ...newTasks];
+
+            if (totalTasks.length < 2) {
+                alert("기존 남은 일과 새 일을 합쳐 최소 2개 이상의 항목이 필요합니다.");
+                return;
+            }
+
+            // 왼쪽 데이터 입력창으로 셋팅 튕겨주기
+            document.getElementById('sessionName').value = session.title.replace(/ \(\d+개\)/, "") + " 수정본";
+            document.getElementById('inputData').value = totalTasks.join("\n");
+
+            // 기존 세션 박스는 깔끔하게 정리 (원하는 경우 주석 처리하여 유지 가능)
+            if(confirm("이 상자의 미완료 목록과 새 항목을 왼쪽 원반 입력창으로 이동합니다.\n(기존 상자는 삭제됩니다)")) {
+                savedSessions = savedSessions.filter(s => s.id !== sessionId);
+                saveToLocalStorage();
+                renderAllSessions();
+            }
+
+            // 자동으로 초기 로드 트리거 발동
+            initRoulette();
+            
+            // 화면 상단 입력창으로 부드럽게 스크롤
+            window.scrollTo({ top: 0, behavior: 'smooth' });
         }
 
         function changeStatus(sessionId, rank, nextStatus) {
