@@ -34,6 +34,12 @@
             min-width: 300px;
             flex: 1;
         }
+        
+        /* [모바일 우선 배치 설정] 데스크톱 기본 순서 지정 */
+        .panel-input { order: 1; }
+        .roulette-area { order: 2; }
+        .panel-todo { order: 3; }
+
         textarea {
             width: 100%;
             height: 120px;
@@ -219,6 +225,17 @@
         .status-done-archive { background-color: #3a3b45; border-color: #1c1d22; color: #fff; }
         .status-done-archive .todo-text { text-decoration: line-through; color: #b7b9cc; }
         .status-done-archive .todo-rank { color: #f6c23e; }
+
+        /* 📱 모바일 화면 (화면 너비 768px 이하) 미디어 쿼리 */
+        @media (max-width: 768px) {
+            .container {
+                flex-direction: column;
+            }
+            /* To-Do List 결과 창을 가장 첫 번째(최상단)로 올림 */
+            .panel-todo { order: 1; }
+            .panel-input { order: 2; }
+            .roulette-area { order: 3; }
+        }
     </style>
 </head>
 <body>
@@ -226,7 +243,7 @@
     <h1>🎯 Task Priority To-Do List</h1>
 
     <div class="container">
-        <div class="panel">
+        <div class="panel panel-input">
             <h3>1. 데이터 입력</h3>
             <div class="input-group">
                 <label for="sessionName">📋 무슨 일부터 할까?</label>
@@ -251,7 +268,7 @@
             <button id="spinBtn" class="btn-success" onclick="startAutoSpin()" style="margin-top: 20px; width: 220px;" disabled>Start!!!!</button>
         </div>
 
-        <div class="panel">
+        <div class="panel panel-todo">
             <h3>📋 To-Do List</h3>
             
             <div class="backup-zone">
@@ -413,7 +430,6 @@
                 const now = new Date();
                 title = `${now.getMonth()+1}/${now.getDate()} 작업 리스트 (0개)`;
             }
-            // 전체 개수 업데이트용 보정
             title = title.replace(/\(\d+개\)/, `(${ranking.length}개)`);
 
             const todoItems = ranking.map((task, idx) => { return { rank: idx + 1, text: task, status: 'ready' }; });
@@ -451,7 +467,6 @@
                 session.todos.forEach(todo => {
                     const tItem = document.createElement('li'); tItem.className = `todo-item status-${todo.status}`;
                     
-                    // 관리용 버튼 분기 처리 (보존된 완료 항목은 되돌리기만 노출)
                     let actionHtml = '';
                     if (todo.status === 'done-archive') {
                         actionHtml = `<button onclick="changeStatus(${session.id}, ${todo.rank}, 'ready')">되돌리기</button>`;
@@ -475,7 +490,6 @@
             });
         }
 
-        // [개선 완료] 미완료 업무 + 새 업무 룰렛 연산 및 완료 항목 하단 보존 함수
         function reSpinWithNewItems(sessionId) {
             if (isRunning) { alert("현재 룰렛이 작동 중입니다."); return; }
             
@@ -485,19 +499,16 @@
             const inputEl = document.getElementById(`addInput_${sessionId}`);
             const newText = inputEl.value.trim();
             
-            // 1. 미완료(ready, skip) 항목만 추출
             const remainingTasks = session.todos
                 .filter(todo => todo.status !== 'done' && todo.status !== 'done-archive')
                 .map(todo => todo.text);
 
-            // 2. 이미 완료('done' 또는 'done-archive') 처리된 항목 추출 및 상태 아카이브화
             const archivedTasks = session.todos
                 .filter(todo => todo.status === 'done' || todo.status === 'done-archive')
                 .map(todo => {
                     return { rank: 0, text: todo.text, status: 'done-archive' };
                 });
 
-            // 3. 새 입력값 분해
             let newTasks = [];
             if (newText) {
                 newTasks = newText.split(/[,;\n]/).map(t => t.trim()).filter(t => t !== "");
@@ -514,7 +525,6 @@
                 return;
             }
 
-            // 4. [개선] 버전 이름 부여 규칙 수정 (수정본 반복 방지 및 ver.X 누적 계산)
             let baseTitle = session.title.replace(/ \(\d+개\)/, "").trim();
             let versionMatch = baseTitle.match(/ver\.(\d+)/);
             
@@ -522,11 +532,10 @@
                 let nextVer = parseInt(versionMatch[1]) + 1;
                 baseTitle = baseTitle.replace(/ver\.\d+/, `ver.${nextVer}`);
             } else {
-                baseTitle = baseTitle.replace(/ 수정본/g, ""); // 혹시 남아있을 옛날 찌꺼기 제거
+                baseTitle = baseTitle.replace(/ 수정본/g, ""); 
                 baseTitle = baseTitle + " ver.1";
             }
 
-            // 5. [개선] 룰렛 스핀 없이 내부 스크립트로 초고속(즉시) 순위 뒤섞기 연산 진행
             let shuffledActive = [...activeTasks];
             let newRanking = [];
             while (shuffledActive.length > 0) {
@@ -534,52 +543,41 @@
                 newRanking.push(shuffledActive.splice(randIdx, 1)[0]);
             }
 
-            // 새로운 우선순위 배열 매핑
             const newTodoItems = newRanking.map((task, idx) => {
                 return { rank: idx + 1, text: task, status: 'ready' };
             });
 
-            // 6. [개선] 완료 항목을 삭제하지 않고 하단에 그대로 합체 보존하기
             const finalTodoItems = [...newTodoItems, ...archivedTasks];
-
-            // 타이틀에 전체 활성+완료 항목 갯수 표기 보정
             const totalCountTitle = baseTitle + ` (${finalTodoItems.length}개)`;
 
-            // 기존 세션을 새 데이터 세션으로 갱신 교체
             session.title = totalCountTitle;
             session.todos = finalTodoItems;
-            session.id = Date.now(); // 아이디 갱신으로 최상단 배치 효과
+            session.id = Date.now(); 
 
-            // 시간순 정렬 유지 후 로컬 저장소 백업 및 렌더링
             savedSessions.sort((a,b) => b.id - a.id);
             saveToLocalStorage();
             renderAllSessions();
 
-            // 캔버스 및 인풋창 클리어
             ctx.clearRect(0, 0, canvas.width, canvas.height);
             document.getElementById('sessionName').value = "";
             document.getElementById('inputData').value = "";
             document.getElementById('statusText').innerHTML = "⚡ <b>초고속 재지정이 완료되어 목록이 갱신되었습니다! (완료 항목 하단 보존)</b>";
             
-            // 화면 상단 대신 결과 창으로 부드럽게 고정
             window.scrollTo({ top: 0, behavior: 'smooth' });
         }
 
         function changeStatus(sessionId, rank, nextStatus) {
             const session = savedSessions.find(s => s.id === sessionId);
             if (session) {
-                // 아카이브 항목 복구 대응을 위해 text 매칭과 rank 매칭 보완
                 const todo = session.todos.find(t => t.rank === rank || (t.status === 'done-archive' && rank === 0));
                 if (todo) {
                     todo.status = nextStatus;
                     if (nextStatus === 'skip') {
                         const index = session.todos.indexOf(todo); session.todos.splice(index, 1); session.todos.push(todo);
                     } else if (nextStatus === 'ready') {
-                        // 되돌리기 시 아카이브 상태 해제 및 임시 랭크 복원 유도
                         if(rank === 0) {
-                            // 기존 활성 맥스 랭크값 구해서 순위 뒤에 붙임
                             const maxRank = session.todos.reduce((max, t) => t.rank > max ? t.rank : max, 0);
-                            todo.rank = maxMax = maxRank + 1;
+                            todo.rank = maxRank + 1;
                         }
                         session.todos.sort((a, b) => {
                             if(a.status === 'done-archive' && b.status !== 'done-archive') return 1;
