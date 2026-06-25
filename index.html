@@ -448,4 +448,162 @@
                 sBox.appendChild(addZone);
 
                 const tList = document.createElement('ul'); tList.className = "todo-list";
-                session
+                session.todos.forEach(todo => {
+                    const tItem = document.createElement('li'); tItem.className = `todo-item status-${todo.status}`;
+                    
+                    // 관리용 버튼 분기 처리 (보존된 완료 항목은 되돌리기만 노출)
+                    let actionHtml = '';
+                    if (todo.status === 'done-archive') {
+                        actionHtml = `<button onclick="changeStatus(${session.id}, ${todo.rank}, 'ready')">되돌리기</button>`;
+                    } else {
+                        actionHtml = `
+                            ${todo.status !== 'done' ? `<button class="btn-done" onclick="changeStatus(${session.id}, ${todo.rank}, 'done')">완료</button>` : ''}
+                            ${todo.status === 'ready' ? `<button class="btn-skip" onclick="changeStatus(${session.id}, ${todo.rank}, 'skip')">미루기</button>` : ''}
+                            ${todo.status !== 'ready' ? `<button onclick="changeStatus(${session.id}, ${todo.rank}, 'ready')">되돌리기</button>` : ''}
+                        `;
+                    }
+
+                    tItem.innerHTML = `
+                        <div class="todo-left">
+                            <span class="todo-rank">${todo.status === 'done-archive' ? '완료' : todo.rank + '위'}</span>
+                            <span class="todo-text">${todo.text}</span>
+                        </div>
+                        <div class="todo-actions">${actionHtml}</div>`;
+                    tList.appendChild(tItem);
+                });
+                sBox.appendChild(tList); container.appendChild(sBox);
+            });
+        }
+
+        // [개선 완료] 미완료 업무 + 새 업무 룰렛 연산 및 완료 항목 하단 보존 함수
+        function reSpinWithNewItems(sessionId) {
+            if (isRunning) { alert("현재 룰렛이 작동 중입니다."); return; }
+            
+            const session = savedSessions.find(s => s.id === sessionId);
+            if (!session) return;
+
+            const inputEl = document.getElementById(`addInput_${sessionId}`);
+            const newText = inputEl.value.trim();
+            
+            // 1. 미완료(ready, skip) 항목만 추출
+            const remainingTasks = session.todos
+                .filter(todo => todo.status !== 'done' && todo.status !== 'done-archive')
+                .map(todo => todo.text);
+
+            // 2. 이미 완료('done' 또는 'done-archive') 처리된 항목 추출 및 상태 아카이브화
+            const archivedTasks = session.todos
+                .filter(todo => todo.status === 'done' || todo.status === 'done-archive')
+                .map(todo => {
+                    return { rank: 0, text: todo.text, status: 'done-archive' };
+                });
+
+            // 3. 새 입력값 분해
+            let newTasks = [];
+            if (newText) {
+                newTasks = newText.split(/[,;\n]/).map(t => t.trim()).filter(t => t !== "");
+            }
+
+            const activeTasks = [...remainingTasks, ...newTasks];
+
+            if (activeTasks.length < 2) {
+                alert("기존 남은 일과 새 일을 합쳐 최소 2개 이상의 활성 항목이 필요합니다.");
+                return;
+            }
+
+            if(!confirm("이 상자의 미완료 목록과 새 항목을 합쳐 초고속으로 재지정합니다.")) {
+                return;
+            }
+
+            // 4. [개선] 버전 이름 부여 규칙 수정 (수정본 반복 방지 및 ver.X 누적 계산)
+            let baseTitle = session.title.replace(/ \(\d+개\)/, "").trim();
+            let versionMatch = baseTitle.match(/ver\.(\d+)/);
+            
+            if (versionMatch) {
+                let nextVer = parseInt(versionMatch[1]) + 1;
+                baseTitle = baseTitle.replace(/ver\.\d+/, `ver.${nextVer}`);
+            } else {
+                baseTitle = baseTitle.replace(/ 수정본/g, ""); // 혹시 남아있을 옛날 찌꺼기 제거
+                baseTitle = baseTitle + " ver.1";
+            }
+
+            // 5. [개선] 룰렛 스핀 없이 내부 스크립트로 초고속(즉시) 순위 뒤섞기 연산 진행
+            let shuffledActive = [...activeTasks];
+            let newRanking = [];
+            while (shuffledActive.length > 0) {
+                let randIdx = Math.floor(Math.random() * shuffledActive.length);
+                newRanking.push(shuffledActive.splice(randIdx, 1)[0]);
+            }
+
+            // 새로운 우선순위 배열 매핑
+            const newTodoItems = newRanking.map((task, idx) => {
+                return { rank: idx + 1, text: task, status: 'ready' };
+            });
+
+            // 6. [개선] 완료 항목을 삭제하지 않고 하단에 그대로 합체 보존하기
+            const finalTodoItems = [...newTodoItems, ...archivedTasks];
+
+            // 타이틀에 전체 활성+완료 항목 갯수 표기 보정
+            const totalCountTitle = baseTitle + ` (${finalTodoItems.length}개)`;
+
+            // 기존 세션을 새 데이터 세션으로 갱신 교체
+            session.title = totalCountTitle;
+            session.todos = finalTodoItems;
+            session.id = Date.now(); // 아이디 갱신으로 최상단 배치 효과
+
+            // 시간순 정렬 유지 후 로컬 저장소 백업 및 렌더링
+            savedSessions.sort((a,b) => b.id - a.id);
+            saveToLocalStorage();
+            renderAllSessions();
+
+            // 캔버스 및 인풋창 클리어
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            document.getElementById('sessionName').value = "";
+            document.getElementById('inputData').value = "";
+            document.getElementById('statusText').innerHTML = "⚡ <b>초고속 재지정이 완료되어 목록이 갱신되었습니다! (완료 항목 하단 보존)</b>";
+            
+            // 화면 상단 대신 결과 창으로 부드럽게 고정
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+
+        function changeStatus(sessionId, rank, nextStatus) {
+            const session = savedSessions.find(s => s.id === sessionId);
+            if (session) {
+                // 아카이브 항목 복구 대응을 위해 text 매칭과 rank 매칭 보완
+                const todo = session.todos.find(t => t.rank === rank || (t.status === 'done-archive' && rank === 0));
+                if (todo) {
+                    todo.status = nextStatus;
+                    if (nextStatus === 'skip') {
+                        const index = session.todos.indexOf(todo); session.todos.splice(index, 1); session.todos.push(todo);
+                    } else if (nextStatus === 'ready') {
+                        // 되돌리기 시 아카이브 상태 해제 및 임시 랭크 복원 유도
+                        if(rank === 0) {
+                            // 기존 활성 맥스 랭크값 구해서 순위 뒤에 붙임
+                            const maxRank = session.todos.reduce((max, t) => t.rank > max ? t.rank : max, 0);
+                            todo.rank = maxMax = maxRank + 1;
+                        }
+                        session.todos.sort((a, b) => {
+                            if(a.status === 'done-archive' && b.status !== 'done-archive') return 1;
+                            if(a.status !== 'done-archive' && b.status === 'done-archive') return -1;
+                            return a.rank - b.rank;
+                        });
+                    }
+                    saveToLocalStorage(); renderAllSessions();
+                }
+            }
+        }
+
+        function deleteSession(sessionId) {
+            if(confirm("이 작업 상자 목록을 완전히 삭제하시겠습니까?")) {
+                savedSessions = savedSessions.filter(s => s.id !== sessionId);
+                saveToLocalStorage(); renderAllSessions();
+            }
+        }
+
+        function updateStatus() {
+            const statusText = document.getElementById('statusText');
+            if (items.length > 0) { statusText.innerHTML = `현재 진행: <span style="color:#4e73df;">${ranking.length + 1}위</span> 선별 중<br>남은 항목: <span style="color:#e74a3b;">${items.length}개</span>`; }
+            else { statusText.innerHTML = "🎉 <b>원반 뽑기가 완료되어 우측에 할 일 상자가 추가되었습니다!</b>"; }
+        }
+    </script>
+</body>
+</html>
