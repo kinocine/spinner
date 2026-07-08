@@ -90,11 +90,15 @@
             border: 1px solid #e3e6f0;
             border-radius: 8px;
             padding: 12px;
+            margin-top: 30px;
             margin-bottom: 15px;
             display: flex;
             gap: 10px;
             justify-content: space-between;
             align-items: center;
+            max-width: 1200px;
+            width: 100%;
+            box-sizing: border-box;
         }
         .btn-backup { background-color: #36b9cc; color: white; font-size: 13px; padding: 8px; margin: 0; flex: 1; }
         .btn-restore { background-color: #f6c23e; color: #333; font-size: 13px; padding: 8px; margin: 0; position: relative; overflow: hidden; text-align: center; border-radius: 6px; font-weight: bold; cursor: pointer;}
@@ -214,12 +218,10 @@
             color: white;
         }
         .todo-actions .btn-done { background-color: #1cc88a; }
-        .todo-actions .btn-skip { background-color: #f6c23e; color: #333; }
+        .todo-actions .btn-delete { background-color: #e74a3b; color: white; }
         
         .status-done { background-color: #eaecf4; opacity: 0.6; }
         .status-done .todo-text { text-decoration: line-through; color: #858796; }
-        .status-skip { background-color: #fff3cd; border-color: #ffeeba; }
-        .status-skip .todo-text { font-style: italic; font-weight: bold; }
 
         /* 재지정 후 완료된 항목들이 쌓이는 블랙 스타일 */
         .status-done-archive { background-color: #3a3b45; border-color: #1c1d22; color: #fff; }
@@ -270,16 +272,15 @@
 
         <div class="panel panel-todo">
             <h3>📋 To-Do List</h3>
-            
-            <div class="backup-zone">
-                <button class="btn-backup" onclick="exportData()">💾 전체 백업 (파일 다운)</button>
-                <div class="btn-restore">
-                    📂 백업 복구 (파일 선택)
-                    <input type="file" id="importFile" accept=".json" onchange="importData(this)">
-                </div>
-            </div>
-
             <div id="todoContainer"></div>
+        </div>
+    </div>
+
+    <div class="backup-zone">
+        <button class="btn-backup" onclick="exportData()">💾 전체 백업 (파일 다운)</button>
+        <div class="btn-restore">
+            📂 백업 복구 (파일 선택)
+            <input type="file" id="importFile" accept=".json" onchange="importData(this)">
         </div>
     </div>
 
@@ -473,7 +474,7 @@
                     } else {
                         actionHtml = `
                             ${todo.status !== 'done' ? `<button class="btn-done" onclick="changeStatus(${session.id}, ${todo.rank}, 'done')">완료</button>` : ''}
-                            ${todo.status === 'ready' ? `<button class="btn-skip" onclick="changeStatus(${session.id}, ${todo.rank}, 'skip')">미루기</button>` : ''}
+                            ${todo.status === 'ready' ? `<button class="btn-delete" onclick="deleteTask(${session.id}, ${todo.rank})">삭제</button>` : ''}
                             ${todo.status !== 'ready' ? `<button onclick="changeStatus(${session.id}, ${todo.rank}, 'ready')">되돌리기</button>` : ''}
                         `;
                     }
@@ -488,6 +489,65 @@
                 });
                 sBox.appendChild(tList); container.appendChild(sBox);
             });
+        }
+
+        /* [삭제] 버튼 클릭 시 해당 항목을 데이터에서 완전히 제거하고 자동 재지정 로직 연동 */
+        function deleteTask(sessionId, rank) {
+            const session = savedSessions.find(s => s.id === sessionId);
+            if (!session) return;
+
+            // 목록에서 아예 삭제할 항목의 인덱스 찾기
+            const todoIndex = session.todos.findIndex(t => t.rank === rank);
+            if (todoIndex === -1) return;
+
+            // 알림창 확인 후 진행
+            if (!confirm(`'${session.todos[todoIndex].text}' 항목을 목록에서 완전히 삭제하고 순위를 초고속으로 재지정합니까?`)) {
+                return;
+            }
+
+            // 항목 제거
+            session.todos.splice(todoIndex, 1);
+
+            // 보존할 완료 항목과 활성(남은) 항목 구분
+            const archivedTasks = session.todos.filter(todo => todo.status === 'done-archive');
+            const activeTasks = session.todos.filter(todo => todo.status !== 'done-archive').map(todo => todo.text);
+
+            // 남아 있는 활성 항목 순위 재지정 처리 (1개 이하면 그냥 바로 1위 지정 처리)
+            let newTodoItems = [];
+            if (activeTasks.length > 0) {
+                let shuffledActive = [...activeTasks];
+                let newRanking = [];
+                while (shuffledActive.length > 0) {
+                    let randIdx = Math.floor(Math.random() * shuffledActive.length);
+                    newRanking.push(shuffledActive.splice(randIdx, 1)[0]);
+                }
+                newTodoItems = newRanking.map((task, idx) => {
+                    return { rank: idx + 1, text: task, status: 'ready' };
+                });
+            }
+
+            // 최종 결합 및 타이틀 업데이트
+            const finalTodoItems = [...newTodoItems, ...archivedTasks];
+            let baseTitle = session.title.replace(/ \(\d+개\)/, "").trim();
+            
+            // 버전 관리 업데이트 규칙 적용
+            let versionMatch = baseTitle.match(/ver\.(\d+)/);
+            if (versionMatch) {
+                let nextVer = parseInt(versionMatch[1]) + 1;
+                baseTitle = baseTitle.replace(/ver\.\d+/, `ver.${nextVer}`);
+            } else {
+                baseTitle = baseTitle.replace(/ 수정본/g, "") + " ver.1";
+            }
+
+            session.title = baseTitle + ` (${finalTodoItems.length}개)`;
+            session.todos = finalTodoItems;
+            session.id = Date.now(); // 상단 재배치용 ID 갱신
+
+            savedSessions.sort((a,b) => b.id - a.id);
+            saveToLocalStorage();
+            renderAllSessions();
+
+            document.getElementById('statusText').innerHTML = "⚡ <b>항목이 삭제되었으며, 목록이 자동으로 재지정되었습니다.</b>";
         }
 
         function reSpinWithNewItems(sessionId) {
@@ -572,9 +632,7 @@
                 const todo = session.todos.find(t => t.rank === rank || (t.status === 'done-archive' && rank === 0));
                 if (todo) {
                     todo.status = nextStatus;
-                    if (nextStatus === 'skip') {
-                        const index = session.todos.indexOf(todo); session.todos.splice(index, 1); session.todos.push(todo);
-                    } else if (nextStatus === 'ready') {
+                    if (nextStatus === 'ready') {
                         if(rank === 0) {
                             const maxRank = session.todos.reduce((max, t) => t.rank > max ? t.rank : max, 0);
                             todo.rank = maxRank + 1;
