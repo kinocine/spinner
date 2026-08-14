@@ -1,7 +1,3 @@
-
-
-
-
 <!DOCTYPE html>
 <html lang="ko">
 <head>
@@ -38,7 +34,7 @@
             min-width: 300px;
             flex: 1;
         }
-        
+
         .panel-input { order: 1; }
         .roulette-area { order: 2; }
         .panel-todo { order: 3; }
@@ -86,8 +82,7 @@
         .btn-success:hover { background-color: #17a673; }
         .btn-success:disabled { background-color: #cccccc; cursor: not-allowed; }
         .btn-danger { background-color: #e74a3b; color: white; padding: 6px 10px; font-size: 12px; width: auto; margin: 0; }
-        
-        /* 백업 및 동기화 상태 존 */
+
         .backup-zone {
             background: #f8f9fc;
             border: 1px solid #e3e6f0;
@@ -106,13 +101,20 @@
         .btn-backup { background-color: #36b9cc; color: white; font-size: 13px; padding: 8px; margin: 0; flex: 1; }
         .btn-restore { background-color: #f6c23e; color: #333; font-size: 13px; padding: 8px; margin: 0; position: relative; overflow: hidden; text-align: center; border-radius: 6px; font-weight: bold; cursor: pointer; flex: 1;}
         .btn-restore input[type="file"] { position: absolute; top: 0; left: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
-        
+
         .sync-status {
             font-size: 12px;
             color: #4e73df;
             font-weight: bold;
             text-align: right;
             margin-bottom: 5px;
+        }
+        .backup-reminder {
+            font-size: 12px;
+            color: #e74a3b;
+            font-weight: bold;
+            text-align: right;
+            margin-bottom: 8px;
         }
 
         .roulette-area {
@@ -142,7 +144,7 @@
             box-shadow: 0 4px 10px rgba(0,0,0,0.15);
             transition: transform 1.2s cubic-bezier(0.25, 0.1, 0.25, 1);
         }
-        
+
         .session-box {
             background: #f8f9fc;
             border: 1px solid #e3e6f0;
@@ -163,7 +165,7 @@
             font-size: 16px;
             color: #333;
         }
-        
+
         .session-add-zone {
             display: flex;
             gap: 6px;
@@ -229,7 +231,7 @@
         }
         .todo-actions .btn-done { background-color: #1cc88a; }
         .todo-actions .btn-delete { background-color: #e74a3b; color: white; }
-        
+
         .status-done { background-color: #eaecf4; opacity: 0.6; }
         .status-done .todo-text { text-decoration: line-through; color: #858796; }
 
@@ -263,7 +265,7 @@
                 <textarea id="inputData" placeholder="이 일&#10;저 일&#10;그 일"></textarea>
             </div>
             <button id="initBtn" class="btn-primary" onclick="initRoulette()">Spin!</button>
-            
+
             <div style="margin-top: 20px;">
                 <p id="statusText" style="font-weight: bold; color: #555; line-height: 1.6;"></p>
             </div>
@@ -279,6 +281,7 @@
 
         <div class="panel panel-todo">
             <div class="sync-status" id="syncStatus">🔄 구글 시트 동기화 중...</div>
+            <div class="backup-reminder" id="backupReminder" style="display:none;"></div>
             <h3>📋 To-Do List</h3>
             <div id="todoContainer"></div>
         </div>
@@ -294,38 +297,59 @@
 
     <script>
         // ⚠️ 아래 URL을 구글 앱스 스크립트 배포 웹 앱 URL로 교체하세요!
-        const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbykD5VMtJzehsPIx9XMKWH4d_rRbEQ-Xn2jZ-8NDDT5aNgbZLPOl1HUD6NrZgzluEWsGw/exec";
+        const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbykD5VMtJzehsPIx9XMKWH4d_rRbEQ-Xn2jZ-8NDDT5aNgbZLPOl1HUD6NrZgzluEWsGw/exec";                                         
 
         let items = [];
         let ranking = [];
         let currentRotation = 0;
         let isRunning = false;
-        let savedSessions = []; 
-        
+        let savedSessions = [];
+
         const canvas = document.getElementById('rouletteCanvas');
         const ctx = canvas.getContext('2d');
         const colors = ["#ff9ff3", "#feca57", "#ff6b6b", "#48dbfb", "#1dd1a1", "#a29bfe", "#ffeaa7", "#fab1a0", "#74b9ff", "#55efc4"];
 
+        // --- 유틸리티 ---
+
+        // 세션 id 충돌 방지: 같은 밀리초에 여러 개 생성돼도 겹치지 않도록 랜덤 값을 덧붙임
+        function generateId() {
+            return Date.now() * 1000 + Math.floor(Math.random() * 1000);
+        }
+
+        // 사용자가 입력한 텍스트를 innerHTML에 넣기 전에 이스케이프 처리 (XSS 방지)
+        function escapeHtml(str) {
+            if (str === undefined || str === null) return "";
+            return String(str)
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;")
+                .replace(/'/g, "&#39;");
+        }
+
         window.onload = function() {
-            // 로컬스토리지 우선 불러오기
-            if(localStorage.getItem('rouletteTodoSessions')) {
+            if (localStorage.getItem('rouletteTodoSessions')) {
                 savedSessions = JSON.parse(localStorage.getItem('rouletteTodoSessions'));
                 renderAllSessions();
+                updateBackupReminder();
             }
-            // 구글 시트 데이터 로드
             loadFromGoogleSheet();
         };
 
-        // 구글 시트 데이터 불러오기
+        // 구글 시트 데이터 불러오기 (GET은 프리플라이트가 없어 기존 방식 그대로 사용 가능)
         function loadFromGoogleSheet() {
             updateSyncText("🔄 구글 시트 데이터 동기화 중...");
             fetch(GOOGLE_SCRIPT_URL)
-                .then(res => res.json())
+                .then(res => {
+                    if (!res.ok) throw new Error("HTTP " + res.status);
+                    return res.json();
+                })
                 .then(data => {
                     if (Array.isArray(data)) {
                         savedSessions = data;
                         localStorage.setItem('rouletteTodoSessions', JSON.stringify(savedSessions));
                         renderAllSessions();
+                        updateBackupReminder();
                         updateSyncText("🟢 구글 시트 동기화 완료");
                     } else {
                         updateSyncText("🟡 구글 시트 데이터 없음 (로컬 사용)");
@@ -338,20 +362,32 @@
         }
 
         // 구글 시트에 데이터 저장하기
+        // - no-cors를 빼서 실제 응답을 확인할 수 있게 함
+        // - Content-Type을 text/plain으로 보내 브라우저가 OPTIONS 프리플라이트를
+        //   먼저 보내지 않도록 함 (Apps Script 웹앱은 OPTIONS를 못 받아 실패하는 경우가 많음)
+        //   → 서버(Code.gs)에서는 이 본문을 그대로 JSON.parse 해서 사용
         function saveToGoogleSheet() {
             updateSyncText("⏳ 구글 시트에 저장 중...");
             fetch(GOOGLE_SCRIPT_URL, {
                 method: 'POST',
-                mode: 'no-cors',
-                headers: { 'Content-Type': 'application/json' },
+                headers: { 'Content-Type': 'text/plain;charset=utf-8' },
                 body: JSON.stringify(savedSessions)
             })
-            .then(() => {
-                updateSyncText("🟢 구글 시트 저장 완료");
+            .then(res => {
+                if (!res.ok) throw new Error("HTTP " + res.status);
+                return res.json();
+            })
+            .then(result => {
+                if (result.status === 'ok') {
+                    updateSyncText("🟢 구글 시트 저장 완료 (" + new Date().toLocaleTimeString() + ")");
+                } else {
+                    console.error(result);
+                    updateSyncText("🔴 구글 시트 저장 실패: " + (result.message || "알 수 없는 오류"));
+                }
             })
             .catch(err => {
                 console.error(err);
-                updateSyncText("🔴 구글 시트 저장 실패");
+                updateSyncText("🔴 구글 시트 저장 실패 (네트워크/서버 오류, 로컬에는 저장됨)");
             });
         }
 
@@ -359,8 +395,20 @@
             document.getElementById('syncStatus').innerText = msg;
         }
 
+        // 세션이 5개 단위로 쌓일 때마다 수동 백업을 살짝 리마인드 (조용히, alert 없이)
+        function updateBackupReminder() {
+            const el = document.getElementById('backupReminder');
+            if (savedSessions.length > 0 && savedSessions.length % 5 === 0) {
+                el.style.display = 'block';
+                el.innerText = `💾 세션이 ${savedSessions.length}개 쌓였습니다. 전체 백업 파일도 한 번 받아두세요.`;
+            } else {
+                el.style.display = 'none';
+            }
+        }
+
         function saveToLocalStorage() {
             localStorage.setItem('rouletteTodoSessions', JSON.stringify(savedSessions));
+            updateBackupReminder();
             saveToGoogleSheet(); // 동기화
         }
 
@@ -371,10 +419,10 @@
             }
             const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(savedSessions));
             const downloadAnchor = document.createElement('a');
-            
+
             const now = new Date();
             const dateStr = `${now.getFullYear()}${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}`;
-            
+
             downloadAnchor.setAttribute("href", dataStr);
             downloadAnchor.setAttribute("download", `kinocine_todo_backup_${dateStr}.json`);
             document.body.appendChild(downloadAnchor);
@@ -413,7 +461,7 @@
                 }
             };
             reader.readAsText(file);
-            input.value = ""; 
+            input.value = "";
         }
 
         function initRoulette() {
@@ -423,7 +471,7 @@
             items = text.split('\n').map(item => item.trim()).filter(item => item !== "");
             if (items.length < 2) { alert("최소 2개 이상의 항목을 입력해주세요."); return; }
 
-            ranking = []; 
+            ranking = [];
             document.getElementById('spinBtn').disabled = false;
             document.getElementById('spinBtn').innerText = "자동 전체 돌리기 시작";
             currentRotation = 0;
@@ -441,7 +489,7 @@
             if (numSegments === 0) return;
 
             items.forEach((item, index) => {
-                const startAngle = index * anglePerSegment - Math.PI / 2; 
+                const startAngle = index * anglePerSegment - Math.PI / 2;
                 const endAngle = startAngle + anglePerSegment;
                 ctx.beginPath(); ctx.moveTo(radius, radius); ctx.arc(radius, radius, radius, startAngle, endAngle); ctx.closePath();
                 ctx.fillStyle = colors[index % colors.length]; ctx.fill(); ctx.stroke();
@@ -463,7 +511,7 @@
             const numSegments = items.length;
             if (numSegments === 1) { finalizeLastItem(); return; }
             canvas.style.transition = 'transform 1.2s cubic-bezier(0.25, 0.1, 0.25, 1)';
-            const randomSpin = Math.floor(Math.random() * 360) + 720; 
+            const randomSpin = Math.floor(Math.random() * 360) + 720;
             currentRotation += randomSpin;
             canvas.style.transform = `rotate(${-currentRotation}deg)`;
 
@@ -496,7 +544,7 @@
             title = title.replace(/\(\d+개\)/, `(${ranking.length}개)`);
 
             const todoItems = ranking.map((task, idx) => { return { rank: idx + 1, text: task, status: 'ready' }; });
-            const newSession = { id: Date.now(), title: title, todos: todoItems };
+            const newSession = { id: generateId(), title: title, todos: todoItems };
             savedSessions.unshift(newSession);
             saveToLocalStorage();
             renderAllSessions();
@@ -506,14 +554,14 @@
         function renderAllSessions() {
             const container = document.getElementById('todoContainer');
             container.innerHTML = "";
-            if(savedSessions.length === 0) {
+            if (savedSessions.length === 0) {
                 container.innerHTML = "<p style='color:#858796; text-align:center;'>결정된 할 일 상자가 비어있습니다.</p>";
                 return;
             }
             savedSessions.forEach(session => {
                 const sBox = document.createElement('div'); sBox.className = "session-box";
                 const sHeader = document.createElement('div'); sHeader.className = "session-header";
-                sHeader.innerHTML = `<span class="session-title">📋 ${session.title}</span><button class="btn-danger" onclick="deleteSession(${session.id})">삭제</button>`;
+                sHeader.innerHTML = `<span class="session-title">📋 ${escapeHtml(session.title)}</span><button class="btn-danger" onclick="deleteSession(${session.id})">삭제</button>`;
                 sBox.appendChild(sHeader);
 
                 const addZone = document.createElement('div');
@@ -527,7 +575,7 @@
                 const tList = document.createElement('ul'); tList.className = "todo-list";
                 session.todos.forEach(todo => {
                     const tItem = document.createElement('li'); tItem.className = `todo-item status-${todo.status}`;
-                    
+
                     let actionHtml = '';
                     if (todo.status === 'done-archive') {
                         actionHtml = `<button onclick="changeStatus(${session.id}, ${todo.rank}, 'ready')">되돌리기</button>`;
@@ -542,7 +590,7 @@
                     tItem.innerHTML = `
                         <div class="todo-left">
                             <span class="todo-rank">${todo.status === 'done-archive' ? '완료' : todo.rank + '위'}</span>
-                            <span class="todo-text">${todo.text}</span>
+                            <span class="todo-text">${escapeHtml(todo.text)}</span>
                         </div>
                         <div class="todo-actions">${actionHtml}</div>`;
                     tList.appendChild(tItem);
@@ -582,7 +630,7 @@
 
             const finalTodoItems = [...newTodoItems, ...archivedTasks];
             let baseTitle = session.title.replace(/ \(\d+개\)/, "").trim();
-            
+
             let versionMatch = baseTitle.match(/ver\.(\d+)/);
             if (versionMatch) {
                 let nextVer = parseInt(versionMatch[1]) + 1;
@@ -593,7 +641,7 @@
 
             session.title = baseTitle + ` (${finalTodoItems.length}개)`;
             session.todos = finalTodoItems;
-            session.id = Date.now();
+            session.id = generateId();
 
             savedSessions.sort((a,b) => b.id - a.id);
             saveToLocalStorage();
@@ -604,13 +652,13 @@
 
         function reSpinWithNewItems(sessionId) {
             if (isRunning) { alert("현재 룰렛이 작동 중입니다."); return; }
-            
+
             const session = savedSessions.find(s => s.id === sessionId);
             if (!session) return;
 
             const inputEl = document.getElementById(`addInput_${sessionId}`);
             const newText = inputEl.value.trim();
-            
+
             const remainingTasks = session.todos
                 .filter(todo => todo.status !== 'done' && todo.status !== 'done-archive')
                 .map(todo => todo.text);
@@ -633,18 +681,18 @@
                 return;
             }
 
-            if(!confirm("이 상자의 미완료 목록과 새 항목을 합쳐 초고속으로 재지정합니다.")) {
+            if (!confirm("이 상자의 미완료 목록과 새 항목을 합쳐 초고속으로 재지정합니다.")) {
                 return;
             }
 
             let baseTitle = session.title.replace(/ \(\d+개\)/, "").trim();
             let versionMatch = baseTitle.match(/ver\.(\d+)/);
-            
+
             if (versionMatch) {
                 let nextVer = parseInt(versionMatch[1]) + 1;
                 baseTitle = baseTitle.replace(/ver\.\d+/, `ver.${nextVer}`);
             } else {
-                baseTitle = baseTitle.replace(/ 수정본/g, ""); 
+                baseTitle = baseTitle.replace(/ 수정본/g, "");
                 baseTitle = baseTitle + " ver.1";
             }
 
@@ -664,7 +712,7 @@
 
             session.title = totalCountTitle;
             session.todos = finalTodoItems;
-            session.id = Date.now(); 
+            session.id = generateId();
 
             savedSessions.sort((a,b) => b.id - a.id);
             saveToLocalStorage();
@@ -674,7 +722,7 @@
             document.getElementById('sessionName').value = "";
             document.getElementById('inputData').value = "";
             document.getElementById('statusText').innerHTML = "⚡ <b>초고속 재지정이 완료되어 목록이 갱신되었습니다! (완료 항목 하단 보존)</b>";
-            
+
             window.scrollTo({ top: 0, behavior: 'smooth' });
         }
 
@@ -685,13 +733,13 @@
                 if (todo) {
                     todo.status = nextStatus;
                     if (nextStatus === 'ready') {
-                        if(rank === 0) {
+                        if (rank === 0) {
                             const maxRank = session.todos.reduce((max, t) => t.rank > max ? t.rank : max, 0);
                             todo.rank = maxRank + 1;
                         }
                         session.todos.sort((a, b) => {
-                            if(a.status === 'done-archive' && b.status !== 'done-archive') return 1;
-                            if(a.status !== 'done-archive' && b.status === 'done-archive') return -1;
+                            if (a.status === 'done-archive' && b.status !== 'done-archive') return 1;
+                            if (a.status !== 'done-archive' && b.status === 'done-archive') return -1;
                             return a.rank - b.rank;
                         });
                     }
@@ -701,7 +749,7 @@
         }
 
         function deleteSession(sessionId) {
-            if(confirm("이 작업 상자 목록을 완전히 삭제하시겠습니까?")) {
+            if (confirm("이 작업 상자 목록을 완전히 삭제하시겠습니까?")) {
                 savedSessions = savedSessions.filter(s => s.id !== sessionId);
                 saveToLocalStorage(); renderAllSessions();
             }
